@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, Float, Boolean, Text, ForeignKey, DateTime
+from sqlalchemy import String, Integer, Float, Boolean, Text, ForeignKey, DateTime, text
 from datetime import datetime, timezone
 from config import settings
 
@@ -49,10 +49,15 @@ class Clip(Base):
     generate_audio: Mapped[bool] = mapped_column(Boolean, default=True)
     seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    transition_type: Mapped[str] = mapped_column(String(50), default="fade")  # fade | wipeleft | wiperight | dissolve | circleopen | slidedown | etc.
+    is_passthrough: Mapped[bool] = mapped_column(Boolean, default=False)  # clip already has a video; skip generation
+
     # Generation state
     status: Mapped[str] = mapped_column(String(50), default="pending")  # pending | queued | generating | complete | error
     fal_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     video_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    normalized_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     video_seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -69,6 +74,15 @@ class Clip(Base):
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Idempotent migrations for columns added after initial schema
+        _migrations = [
+            "ALTER TABLE clips ADD COLUMN is_passthrough BOOLEAN NOT NULL DEFAULT 0",
+        ]
+        for sql in _migrations:
+            try:
+                await conn.execute(text(sql))
+            except Exception:
+                pass  # Column already exists
 
 
 async def get_db() -> AsyncSession:

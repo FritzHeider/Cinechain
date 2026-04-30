@@ -3,7 +3,8 @@ from pathlib import Path
 
 
 class Settings(BaseSettings):
-    fal_key: str = ""
+    fal_key: str = ""  # Required — set FAL_KEY in backend/.env
+    anthropic_api_key: str = ""  # Required for /extend — set ANTHROPIC_API_KEY in backend/.env
     database_url: str = "sqlite+aiosqlite:///./cinechain.db"
     upload_dir: Path = Path("./uploads")
     output_dir: Path = Path("./outputs")

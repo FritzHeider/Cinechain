@@ -1,11 +1,12 @@
 """
 Stitch service: downloads generated clip videos and assembles them into
-a final cinematic video using FFmpeg concat demuxer.
+a final cinematic video using FFmpeg.
 
 Handles:
 - Downloading clips from fal CDN URLs
-- Normalizing codec/resolution/fps across clips
-- Concat with optional crossfade transitions
+- Normalizing codec/resolution/fps/audio across clips (with loudnorm)
+- Caching normalized clips on disk by clip ID to enable resume
+- Per-clip transition types via FFmpeg xfade filter
 - Outputting final MP4
 """
 
@@ -24,11 +25,15 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+# Persistent cache dir for normalized clips — survives between stitch calls
+NORM_CACHE_DIR = settings.output_dir / "norm_cache"
+NORM_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 
 def _check_ffmpeg():
     if shutil.which("ffmpeg") is None:
         raise RuntimeError(
-            "ffmpeg not found. Install it with: brew install ffmpeg (macOS) or apt install ffmpeg (Linux)"
+            "ffmpeg not found. Install with: brew install ffmpeg (macOS) or apt install ffmpeg (Linux)"
         )
 
 
@@ -45,11 +50,11 @@ async def download_video(url: str, dest: Path) -> None:
 
 async def normalize_clip(src: Path, dst: Path, resolution: str = "720p") -> None:
     """
-    Re-encode a clip to a consistent format:
+    Re-encode a clip to consistent format with audio normalization:
     - H.264 video, AAC audio
-    - 24 fps
-    - Target resolution (720p = 1280x720, 480p = 854x480)
-    - yuv420p pixel format for maximum compatibility
+    - 24 fps, target resolution (720p = 1280x720, 480p = 854x480)
+    - yuv420p pixel format
+    - loudnorm audio filter for consistent volume levels
     """
     _check_ffmpeg()
 
@@ -59,6 +64,7 @@ async def normalize_clip(src: Path, dst: Path, resolution: str = "720p") -> None
         "ffmpeg", "-y",
         "-i", str(src),
         "-vf", f"scale={scale}:force_original_aspect_ratio=decrease,pad={scale}:(ow-iw)/2:(oh-ih)/2,fps=24",
+        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
         "-c:v", "libx264", "-preset", "fast", "-crf", "20",
         "-c:a", "aac", "-b:a", "192k",
         "-pix_fmt", "yuv420p",
@@ -76,19 +82,53 @@ async def normalize_clip(src: Path, dst: Path, resolution: str = "720p") -> None
         raise RuntimeError(f"FFmpeg normalize failed:\n{stderr.decode()}")
 
 
-async def crossfade_two_clips(clip_a: Path, clip_b: Path, dst: Path, fade_duration: float = 0.5) -> None:
-    """
-    Apply a crossfade transition between two clips using FFmpeg xfade filter.
-    Both clips must be normalized first.
-    """
+async def extract_thumbnail(video_path: Path, output_path: Path, time: float = 0.5) -> None:
+    """Extract a single frame from a video as a JPEG thumbnail."""
     _check_ffmpeg()
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", str(time),
+        "-i", str(video_path),
+        "-frames:v", "1",
+        "-q:v", "3",
+        str(output_path),
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
 
-    # Get duration of clip_a to calculate crossfade offset
+
+async def extract_last_frame(video_path: Path, output_path: Path) -> None:
+    """Extract the very last frame of a video as a JPEG image."""
+    _check_ffmpeg()
+    cmd = [
+        "ffmpeg", "-y",
+        "-sseof", "-0.1",
+        "-i", str(video_path),
+        "-frames:v", "1",
+        "-q:v", "2",
+        str(output_path),
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(f"FFmpeg last-frame extraction failed:\n{stderr.decode()}")
+
+
+async def get_duration(video_path: Path) -> float:
+    """Return video duration in seconds via ffprobe."""
     probe_cmd = [
         "ffprobe", "-v", "error",
         "-show_entries", "format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1",
-        str(clip_a),
+        str(video_path),
     ]
     proc = await asyncio.create_subprocess_exec(
         *probe_cmd,
@@ -96,7 +136,24 @@ async def crossfade_two_clips(clip_a: Path, clip_b: Path, dst: Path, fade_durati
         stderr=asyncio.subprocess.PIPE,
     )
     stdout, _ = await proc.communicate()
-    duration_a = float(stdout.decode().strip())
+    return float(stdout.decode().strip())
+
+
+async def crossfade_two_clips(
+    clip_a: Path,
+    clip_b: Path,
+    dst: Path,
+    fade_duration: float = 0.5,
+    transition: str = "fade",
+) -> None:
+    """
+    Apply an xfade transition between two clips.
+    Both clips must be normalized first.
+    Supports all FFmpeg xfade transition types.
+    """
+    _check_ffmpeg()
+
+    duration_a = await get_duration(clip_a)
     offset = max(0.0, duration_a - fade_duration)
 
     cmd = [
@@ -105,7 +162,7 @@ async def crossfade_two_clips(clip_a: Path, clip_b: Path, dst: Path, fade_durati
         "-i", str(clip_b),
         "-filter_complex",
         (
-            f"[0:v][1:v]xfade=transition=fade:duration={fade_duration}:offset={offset}[vout];"
+            f"[0:v][1:v]xfade=transition={transition}:duration={fade_duration}:offset={offset}[vout];"
             f"[0:a][1:a]acrossfade=d={fade_duration}[aout]"
         ),
         "-map", "[vout]",
@@ -128,10 +185,7 @@ async def crossfade_two_clips(clip_a: Path, clip_b: Path, dst: Path, fade_durati
 
 
 async def concat_clips(clip_paths: list[Path], output: Path) -> None:
-    """
-    Simple concat (no transition) using FFmpeg concat demuxer.
-    All clips must share the same codec/resolution/fps.
-    """
+    """Simple concat (no transitions) using FFmpeg concat demuxer."""
     _check_ffmpeg()
 
     list_file = output.parent / f"concat_{uuid.uuid4().hex}.txt"
@@ -162,8 +216,13 @@ async def concat_clips(clip_paths: list[Path], output: Path) -> None:
             list_file.unlink()
 
 
+def _norm_cache_path(clip_id: int, resolution: str) -> Path:
+    """Return the persistent cache path for a normalized clip."""
+    return NORM_CACHE_DIR / f"clip_{clip_id}_{resolution}.mp4"
+
+
 async def stitch_clips(
-    video_urls: list[str],
+    clips: list[dict],  # list of {id, video_url, resolution, transition_type}
     project_id: int,
     resolution: str = "720p",
     crossfade: bool = True,
@@ -171,49 +230,55 @@ async def stitch_clips(
 ) -> str:
     """
     Full pipeline:
-    1. Download all clip videos
-    2. Normalize to consistent format
-    3. Apply crossfade transitions (optional)
+    1. Download clips (skip if normalized cache exists)
+    2. Normalize to consistent format with audio loudnorm (cached by clip ID)
+    3. Apply per-clip xfade transitions (optional)
     4. Concat into final video
     5. Return local file path of final video
-
-    Returns path to the final stitched video file.
     """
     _check_ffmpeg()
 
-    if not video_urls:
-        raise ValueError("No video URLs provided for stitching.")
+    if not clips:
+        raise ValueError("No clips provided for stitching.")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
 
-        # Step 1: Download
-        logger.info(f"[stitch] Downloading {len(video_urls)} clips...")
-        raw_paths = []
-        for i, url in enumerate(video_urls):
-            raw = tmp / f"raw_{i:03d}.mp4"
-            await download_video(url, raw)
-            raw_paths.append(raw)
-
-        # Step 2: Normalize
-        logger.info("[stitch] Normalizing clips...")
         norm_paths = []
-        for i, raw in enumerate(raw_paths):
-            norm = tmp / f"norm_{i:03d}.mp4"
-            await normalize_clip(raw, norm, resolution=resolution)
-            norm_paths.append(norm)
+        for i, clip in enumerate(clips):
+            clip_id = clip["id"]
+            url = clip["video_url"]
 
-        # Step 3 & 4: Crossfade + concat
+            cached = _norm_cache_path(clip_id, resolution)
+            if cached.exists():
+                logger.info(f"[stitch] Using cached normalized clip {clip_id}")
+                norm_paths.append(cached)
+                continue
+
+            # Download
+            raw = tmp / f"raw_{i:03d}.mp4"
+            logger.info(f"[stitch] Downloading clip {clip_id}...")
+            await download_video(url, raw)
+
+            # Normalize into persistent cache
+            logger.info(f"[stitch] Normalizing clip {clip_id}...")
+            await normalize_clip(raw, cached, resolution=resolution)
+            norm_paths.append(cached)
+
         output_filename = f"cinechain_project_{project_id}_{uuid.uuid4().hex[:8]}.mp4"
         final_output = settings.output_dir / output_filename
 
         if crossfade and len(norm_paths) > 1:
             logger.info("[stitch] Applying crossfade transitions...")
-            # Chain crossfades: A+B → AB, AB+C → ABC, ...
             current = norm_paths[0]
             for i in range(1, len(norm_paths)):
+                transition = clips[i].get("transition_type", "fade")
                 faded = tmp / f"faded_{i:03d}.mp4"
-                await crossfade_two_clips(current, norm_paths[i], faded, fade_duration=crossfade_duration)
+                await crossfade_two_clips(
+                    current, norm_paths[i], faded,
+                    fade_duration=crossfade_duration,
+                    transition=transition,
+                )
                 current = faded
             shutil.copy2(str(current), str(final_output))
         else:
@@ -222,3 +287,12 @@ async def stitch_clips(
 
         logger.info(f"[stitch] Final video: {final_output}")
         return str(final_output)
+
+
+def invalidate_norm_cache(clip_id: int) -> None:
+    """Delete cached normalized files for a clip (call when clip video changes)."""
+    for res in ("720p", "480p"):
+        p = _norm_cache_path(clip_id, res)
+        if p.exists():
+            p.unlink()
+            logger.info(f"Invalidated norm cache for clip {clip_id} ({res})")

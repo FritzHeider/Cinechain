@@ -34,8 +34,7 @@ User → React UI (storyboard builder)
 ```bash
 cd cinechain/backend
 python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+ pip install -r requirements.txt
 ```
 
 ### 2. Configure environment
@@ -68,7 +67,7 @@ Give your cinematic project a name and description.
 
 ### Step 2: Add scenes (clips)
 Each clip represents one scene in your film:
-- **Start frame**: The image that begins the shot (required)
+- **Start frame**: Thec image that begins the shot (required)
 - **End frame**: Optional image to control where the shot ends (great for transitions)
 - **Prompt**: Describe the motion — camera movement, action, mood
 - **Duration**: 4–15 seconds, or "auto"

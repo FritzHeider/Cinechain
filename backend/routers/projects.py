@@ -9,6 +9,7 @@ from models import (
     ProjectCreate, ProjectUpdate, ProjectResponse, ProjectSummary,
     ClipCreate, ClipUpdate, ClipResponse,
 )
+from services.stitch_service import invalidate_norm_cache
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -103,6 +104,7 @@ async def update_clip(project_id: int, clip_id: int, data: ClipUpdate, db: Async
         clip.video_url = None
         clip.fal_request_id = None
         clip.error_message = None
+        invalidate_norm_cache(clip.id)
     clip.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(clip)
