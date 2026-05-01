@@ -3,7 +3,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 const API = "http://localhost:8000";
 
 const ASPECT_RATIOS = ["auto", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
-const RESOLUTIONS = ["720p", "480p"];
 const DURATIONS = ["auto", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"];
 const TRANSITION_TYPES = [
   "fade", "dissolve", "wipeleft", "wiperight", "wipeup", "wipedown",
@@ -24,24 +23,102 @@ const PROMPT_PRESETS = [
   { label: "Dutch tilt push", value: "Dutch angle tilt with slow push forward, tension building" },
 ];
 
-// $0.2419 per second at 720p; 480p is roughly 30% cheaper
-const COST_PER_SEC = { "720p": 0.2419, "480p": 0.169 };
+// Cost per second by resolution
+const COST_PER_SEC = { "720p": 0.2419, "480p": 0.169, "1080p": 0.4838 };
 
 const STATUS_COLOR = {
-  pending: "#888780", queued: "#378ADD", generating: "#BA7517",
-  complete: "#3B6D11", error: "#A32D2D", draft: "#888780", rendering: "#BA7517",
+  pending: "#94A3B8", queued: "#60A5FA", generating: "#FBBF24",
+  complete: "#4ADE80", error: "#F87171", draft: "#94A3B8", rendering: "#FBBF24",
 };
 const STATUS_BG = {
-  pending: "#F1EFE8", queued: "#E6F1FB", generating: "#FAEEDA",
-  complete: "#EAF3DE", error: "#FCEBEB", draft: "#F1EFE8", rendering: "#FAEEDA",
+  pending: "rgba(148,163,184,0.12)", queued: "rgba(96,165,250,0.14)",
+  generating: "rgba(251,191,36,0.14)", complete: "rgba(74,222,128,0.12)",
+  error: "rgba(248,113,113,0.14)", draft: "rgba(148,163,184,0.12)",
+  rendering: "rgba(251,191,36,0.14)",
 };
 
+// Seedance model helpers
+function MODEL_TYPE(key) {
+  if (key === "fast-t2v" || key === "pro-t2v") return "t2v";
+  if (key === "fast-ref" || key === "pro-ref") return "ref";
+  return "i2v";
+}
+
+// ─── SVG Icons ────────────────────────────────────────────────────────────────
+function IconFilm({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect width="20" height="20" x="2" y="2" rx="2.18" ry="2.18"/>
+      <line x1="7" x2="7" y1="2" y2="22"/><line x1="17" x2="17" y1="2" y2="22"/>
+      <line x1="2" x2="22" y1="7" y2="7"/><line x1="2" x2="22" y1="12" y2="12"/><line x1="2" x2="22" y1="17" y2="17"/>
+    </svg>
+  );
+}
+
+function IconCoin({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M12 6v2m0 8v2M9.5 9.5C10 8.5 11 8 12 8s2.5.5 2.5 2c0 2-4.5 2-4.5 4s1.5 2 2.5 2 2-.5 2.5-1.5"/>
+    </svg>
+  );
+}
+
+function IconClapperboard({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/>
+      <path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 3.9"/>
+      <path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>
+    </svg>
+  );
+}
+
+function IconSparkles({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+      <path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>
+    </svg>
+  );
+}
+
+function IconDownload({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" x2="12" y1="15" y2="3"/>
+    </svg>
+  );
+}
+
+function IconScissors({ size = 13 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+      <line x1="20" x2="8.12" y1="4" y2="15.88"/>
+      <line x1="14.47" x2="20" y1="14.48" y2="20"/>
+      <line x1="8.12" x2="12" y1="8.12" y2="12"/>
+    </svg>
+  );
+}
+
+function IconZap({ size = 13 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+    </svg>
+  );
+}
+
+// ─── Badge + Spinner ──────────────────────────────────────────────────────────
 function Badge({ status, label }) {
   return (
     <span style={{
       fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 20,
-      background: STATUS_BG[status] || "#F1EFE8",
-      color: STATUS_COLOR[status] || "#444",
+      background: STATUS_BG[status] || "rgba(148,163,184,0.12)",
+      color: STATUS_COLOR[status] || "#94A3B8",
       textTransform: "uppercase", letterSpacing: "0.05em",
     }}>{label || status}</span>
   );
@@ -51,7 +128,7 @@ function Spinner() {
   return (
     <span style={{
       display: "inline-block", width: 14, height: 14,
-      border: "2px solid #D3D1C7", borderTopColor: "#378ADD",
+      border: "2px solid rgba(255,255,255,0.15)", borderTopColor: "#60A5FA",
       borderRadius: "50%", animation: "spin 0.7s linear infinite",
     }} />
   );
@@ -72,27 +149,27 @@ function FilmStrip({ clips }) {
           <div style={{
             width: 96, height: 54, borderRadius: 6, overflow: "hidden",
             background: "var(--color-background-secondary)",
-            border: `1.5px solid ${clip.status === "complete" ? "#C0DD97" : clip.status === "error" ? "#F09595" : "var(--color-border-tertiary)"}`,
+            border: `1.5px solid ${clip.status === "complete" ? "rgba(74,222,128,0.5)" : clip.status === "error" ? "rgba(248,113,113,0.5)" : "var(--color-border-tertiary)"}`,
           }}>
             {clip.thumbnail_url ? (
               <img src={clip.thumbnail_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             ) : clip.image_url && clip.image_url !== "https://example.com/placeholder.jpg" ? (
               <img src={clip.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.5 }} />
             ) : (
-              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ fontSize: 18, color: "var(--color-text-tertiary)" }}>🎞</span>
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--color-text-tertiary)" }}>
+                <IconFilm size={20} />
               </div>
             )}
           </div>
           <div style={{
             position: "absolute", bottom: 3, left: 3,
-            background: "rgba(0,0,0,0.55)", borderRadius: 3,
+            background: "rgba(0,0,0,0.65)", borderRadius: 3,
             fontSize: 9, color: "#fff", padding: "1px 4px",
           }}>{i + 1}</div>
           {clip.status === "generating" && (
             <div style={{
               position: "absolute", inset: 0, borderRadius: 6,
-              background: "rgba(0,0,0,0.3)", display: "flex",
+              background: "rgba(0,0,0,0.4)", display: "flex",
               alignItems: "center", justifyContent: "center",
             }}><Spinner /></div>
           )}
@@ -104,27 +181,76 @@ function FilmStrip({ clips }) {
 
 // ─── Cost estimate banner ─────────────────────────────────────────────────────
 function CostEstimate({ clips, draft }) {
-  const totalSec = clips.reduce((sum, c) => {
+  const { totalCost, totalSec } = clips.reduce((acc, c) => {
     const d = c.duration === "auto" ? 6 : parseInt(c.duration, 10);
-    return sum + d;
-  }, 0);
-  const resolution = draft ? "480p" : (clips[0]?.resolution || "720p");
-  const rate = COST_PER_SEC[resolution] || COST_PER_SEC["720p"];
-  const cost = (totalSec * rate).toFixed(2);
+    const res = draft ? "480p" : (c.resolution || "720p");
+    return { totalCost: acc.totalCost + d * (COST_PER_SEC[res] || COST_PER_SEC["720p"]), totalSec: acc.totalSec + d };
+  }, { totalCost: 0, totalSec: 0 });
 
   return (
     <div style={{
-      background: "#FFF8E6", border: "0.5px solid #FAC775", borderRadius: 8,
-      padding: "7px 12px", fontSize: 12, color: "#7A4A00", display: "flex",
-      alignItems: "center", gap: 8,
+      background: "rgba(251,191,36,0.08)", border: "0.5px solid rgba(251,191,36,0.3)",
+      borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "#FBBF24",
+      display: "flex", alignItems: "center", gap: 8,
     }}>
-      <span>💰</span>
+      <IconCoin size={14} />
       <span>
-        Estimated cost: <strong>${cost}</strong> &nbsp;·&nbsp;
-        {totalSec}s total &nbsp;·&nbsp;
-        {resolution} @ ${rate}/sec
-        {draft && <span style={{ color: "#3B6D11", marginLeft: 6 }}>✓ Draft mode saves ~30%</span>}
+        Estimated cost: <strong>${totalCost.toFixed(2)}</strong> &nbsp;·&nbsp;
+        {totalSec}s total
+        {draft && <span style={{ color: "#4ADE80", marginLeft: 6 }}>✓ Draft mode saves ~30%</span>}
       </span>
+    </div>
+  );
+}
+
+// ─── ReferenceList ────────────────────────────────────────────────────────────
+function ReferenceList({ label, urls, onChange, accept, maxItems, endpoint }) {
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef();
+
+  const items = urls || [];
+  const add = url => onChange([...items, url]);
+  const remove = i => onChange(items.filter((_, idx) => idx !== i));
+  const update = (i, url) => onChange(items.map((u, idx) => idx === i ? url : u));
+
+  const handleUpload = async (file) => {
+    setUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const r = await fetch(`${API}${endpoint}`, { method: "POST", body: fd });
+      const data = await r.json();
+      add(data.url);
+    } catch (e) { alert("Upload failed: " + e.message); }
+    setUploading(false);
+  };
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+        <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
+        {items.length < maxItems && (
+          <div style={{ display: "flex", gap: 4 }}>
+            <input ref={fileRef} type="file" accept={accept} style={{ display: "none" }}
+              onChange={e => { if (e.target.files[0]) { handleUpload(e.target.files[0]); e.target.value = ""; } }} />
+            <button onClick={() => fileRef.current.click()} style={{ ...smallBtnStyle, fontSize: 11 }}>
+              {uploading ? <Spinner /> : "↑ Upload"}
+            </button>
+            <button onClick={() => add("")} style={{ ...smallBtnStyle, fontSize: 11 }}>+ URL</button>
+          </div>
+        )}
+      </div>
+      {items.map((url, i) => (
+        <div key={i} style={{ display: "flex", gap: 6, marginBottom: 5 }}>
+          <input value={url} onChange={e => update(i, e.target.value)} placeholder="https://..." style={{ ...inputStyle, flex: 1, fontSize: 12 }} />
+          <button onClick={() => remove(i)} style={{ ...smallBtnStyle, color: "#F87171", borderColor: "rgba(248,113,113,0.4)", padding: "5px 8px" }}>✕</button>
+        </div>
+      ))}
+      {items.length === 0 && (
+        <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", padding: "4px 0" }}>
+          No references — upload a file or paste a URL above.
+        </div>
+      )}
     </div>
   );
 }
@@ -137,6 +263,10 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
     prompt: clip.prompt || "",
     image_url: clip.image_url || "",
     end_image_url: clip.end_image_url || "",
+    model: clip.model || "fast-i2v",
+    reference_image_urls: clip.reference_image_urls || [],
+    reference_video_urls: clip.reference_video_urls || [],
+    reference_audio_urls: clip.reference_audio_urls || [],
     resolution: clip.resolution || "720p",
     duration: clip.duration || "auto",
     aspect_ratio: clip.aspect_ratio || "auto",
@@ -150,6 +280,8 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
   const endFileRef = useRef();
 
   const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setDirty(true); };
+  const mt = MODEL_TYPE(form.model);
+  const resolutions = mt === "i2v" ? ["720p", "480p"] : ["1080p", "720p", "480p"];
 
   const handleUpload = async (file, field) => {
     setUploading(true);
@@ -164,7 +296,13 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
   };
 
   const handleSave = async () => {
-    await onUpdate(clip.id, { ...form, end_image_url: form.end_image_url || null });
+    await onUpdate(clip.id, {
+      ...form,
+      end_image_url: form.end_image_url || null,
+      reference_image_urls: form.reference_image_urls?.length > 0 ? form.reference_image_urls : null,
+      reference_video_urls: form.reference_video_urls?.length > 0 ? form.reference_video_urls : null,
+      reference_audio_urls: form.reference_audio_urls?.length > 0 ? form.reference_audio_urls : null,
+    });
     setDirty(false);
   };
 
@@ -178,11 +316,17 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
   const isLast = index === total - 1;
   const isPassthrough = clip.is_passthrough;
 
+  const canGenerate = !isPassthrough && !!form.prompt && projectStatus !== "rendering" && (
+    mt === "t2v" ||
+    (mt === "i2v" && !!form.image_url && form.image_url !== "https://example.com/placeholder.jpg") ||
+    (mt === "ref" && (form.reference_image_urls?.length > 0 || form.reference_video_urls?.length > 0))
+  );
+
   return (
     <div style={{
       background: "var(--color-background-primary)",
-      border: `0.5px solid ${clip.status === "error" ? "#F09595" : isPassthrough ? "#D0AEFF" : "var(--color-border-tertiary)"}`,
-      borderRadius: 12, marginBottom: 10, overflow: "hidden", transition: "border-color 0.2s",
+      border: `0.5px solid ${clip.status === "error" ? "rgba(248,113,113,0.5)" : isPassthrough ? "rgba(139,92,246,0.4)" : "var(--color-border-tertiary)"}`,
+      borderRadius: 12, marginBottom: 10, overflow: "hidden", transition: "border-color 0.15s",
     }}>
       {/* Card header */}
       <div style={{
@@ -199,7 +343,8 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
         {isPassthrough && (
           <span style={{
             fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 20,
-            background: "#F5EDFF", color: "#6B21A8", border: "0.5px solid #D0AEFF",
+            background: "rgba(139,92,246,0.12)", color: "#A78BFA",
+            border: "0.5px solid rgba(139,92,246,0.35)",
             textTransform: "uppercase", letterSpacing: "0.05em", flexShrink: 0,
           }}>Original</span>
         )}
@@ -207,11 +352,7 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
         {/* Start frame thumb */}
         {(clip.thumbnail_url || (clip.image_url && clip.image_url !== "https://example.com/placeholder.jpg")) && (
           <div style={{ width: 40, height: 24, borderRadius: 4, overflow: "hidden", flexShrink: 0 }}>
-            <img
-              src={clip.thumbnail_url || clip.image_url}
-              alt=""
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
+            <img src={clip.thumbnail_url || clip.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
         )}
 
@@ -225,11 +366,16 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {!isPassthrough && (
+            <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", background: "var(--color-background-secondary)", padding: "1px 6px", borderRadius: 4 }}>
+              {form.model}
+            </span>
+          )}
           <Badge status={clip.status} />
           {isGenerating && <Spinner />}
           {clip.video_url && (
             <a href={clip.video_url} target="_blank" rel="noreferrer"
-              style={{ fontSize: 11, color: "#185FA5", textDecoration: "none" }}
+              style={{ fontSize: 11, color: "#60A5FA", textDecoration: "none" }}
               onClick={e => e.stopPropagation()}>▶ preview</a>
           )}
           <span style={{ fontSize: 16, color: "var(--color-text-tertiary)", marginLeft: 4 }}>{expanded ? "▲" : "▼"}</span>
@@ -240,10 +386,12 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
       {expanded && (
         <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", padding: "14px 14px 12px" }}>
           {isPassthrough && (
-            <div style={{ background: "#F5EDFF", border: "0.5px solid #D0AEFF", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#6B21A8", marginBottom: 12 }}>
+            <div style={{ background: "rgba(139,92,246,0.08)", border: "0.5px solid rgba(139,92,246,0.3)", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#A78BFA", marginBottom: 12 }}>
               This is the original uploaded video. It will be included as-is in the stitch — no generation needed.
             </div>
           )}
+
+          {/* Row 1: name + aspect ratio */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
             <div>
               <label style={labelStyle}>Clip name</label>
@@ -257,10 +405,39 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
             </div>
           </div>
 
+          {/* Model selector */}
+          {!isPassthrough && (
+            <div style={{ marginBottom: 10 }}>
+              <label style={labelStyle}>Model</label>
+              <select value={form.model} onChange={e => set("model", e.target.value)} style={inputStyle}>
+                <optgroup label="Fast (cheaper)">
+                  <option value="fast-i2v">Fast · Image-to-Video</option>
+                  <option value="fast-t2v">Fast · Text-to-Video</option>
+                  <option value="fast-ref">Fast · Reference (images + video + audio)</option>
+                </optgroup>
+                <optgroup label="Pro (higher quality)">
+                  <option value="pro-i2v">Pro · Image-to-Video</option>
+                  <option value="pro-t2v">Pro · Text-to-Video</option>
+                  <option value="pro-ref">Pro · Reference (images + video + audio)</option>
+                </optgroup>
+              </select>
+              {mt === "ref" && (
+                <div style={{ fontSize: 11, color: "#A78BFA", marginTop: 4 }}>
+                  Reference model: use @Image1, @Video1, @Audio1 tags in your prompt to reference uploaded assets.
+                </div>
+              )}
+              {mt === "t2v" && (
+                <div style={{ fontSize: 11, color: "#60A5FA", marginTop: 4 }}>
+                  Text-to-video: no start frame needed — describe the full scene in the prompt.
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Motion prompt with presets */}
           <div style={{ marginBottom: 10 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-              <label style={{ ...labelStyle, marginBottom: 0 }}>Motion prompt <span style={{ color: "#A32D2D" }}>*</span></label>
+              <label style={{ ...labelStyle, marginBottom: 0 }}>Motion prompt <span style={{ color: "#F87171" }}>*</span></label>
               <select
                 defaultValue=""
                 onChange={e => { if (e.target.value) { set("prompt", e.target.value); e.target.value = ""; } }}
@@ -273,46 +450,86 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
             <textarea
               value={form.prompt}
               onChange={e => set("prompt", e.target.value)}
-              placeholder="Describe the motion, action, and mood of this clip..."
+              placeholder={
+                mt === "ref"
+                  ? "Describe the scene. Use @Image1, @Video1, @Audio1 to reference your uploads..."
+                  : mt === "t2v"
+                  ? "Describe the full scene — setting, action, mood, camera movement..."
+                  : "Describe the motion, action, and mood of this clip..."
+              }
               rows={3}
               style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }}
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-            <div>
-              <label style={labelStyle}>Start frame image URL</label>
-              <div style={{ display: "flex", gap: 6 }}>
-                <input value={form.image_url} onChange={e => set("image_url", e.target.value)} placeholder="https://..." style={{ ...inputStyle, flex: 1 }} />
-                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
-                  onChange={e => e.target.files[0] && handleUpload(e.target.files[0], "image_url")} />
-                <button onClick={() => fileRef.current.click()} style={smallBtnStyle} title="Upload image">
-                  {uploading ? <Spinner /> : "↑"}
-                </button>
+          {/* Image-to-video: start + end frame */}
+          {mt === "i2v" && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div>
+                <label style={labelStyle}>Start frame image URL</label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input value={form.image_url} onChange={e => set("image_url", e.target.value)} placeholder="https://..." style={{ ...inputStyle, flex: 1 }} />
+                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
+                    onChange={e => { if (e.target.files[0]) { handleUpload(e.target.files[0], "image_url"); e.target.value = ""; } }} />
+                  <button onClick={() => fileRef.current.click()} style={smallBtnStyle} title="Upload image">
+                    {uploading ? <Spinner /> : "↑"}
+                  </button>
+                </div>
+                {form.image_url && form.image_url !== "https://example.com/placeholder.jpg" && (
+                  <img src={form.image_url} alt="" style={{ width: "100%", height: 80, objectFit: "cover", borderRadius: 6, marginTop: 6 }} />
+                )}
               </div>
-              {form.image_url && form.image_url !== "https://example.com/placeholder.jpg" && (
-                <img src={form.image_url} alt="" style={{ width: "100%", height: 80, objectFit: "cover", borderRadius: 6, marginTop: 6 }} />
-              )}
-            </div>
-            <div>
-              <label style={labelStyle}>End frame image URL <span style={{ color: "var(--color-text-tertiary)" }}>(optional)</span></label>
-              <div style={{ display: "flex", gap: 6 }}>
-                <input value={form.end_image_url} onChange={e => set("end_image_url", e.target.value)} placeholder="https://..." style={{ ...inputStyle, flex: 1 }} />
-                <input ref={endFileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
-                  onChange={e => e.target.files[0] && handleUpload(e.target.files[0], "end_image_url")} />
-                <button onClick={() => endFileRef.current.click()} style={smallBtnStyle} title="Upload end frame">↑</button>
+              <div>
+                <label style={labelStyle}>End frame image URL <span style={{ color: "var(--color-text-tertiary)" }}>(optional)</span></label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input value={form.end_image_url} onChange={e => set("end_image_url", e.target.value)} placeholder="https://..." style={{ ...inputStyle, flex: 1 }} />
+                  <input ref={endFileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
+                    onChange={e => { if (e.target.files[0]) { handleUpload(e.target.files[0], "end_image_url"); e.target.value = ""; } }} />
+                  <button onClick={() => endFileRef.current.click()} style={smallBtnStyle} title="Upload end frame">↑</button>
+                </div>
+                {form.end_image_url && (
+                  <img src={form.end_image_url} alt="" style={{ width: "100%", height: 80, objectFit: "cover", borderRadius: 6, marginTop: 6 }} />
+                )}
               </div>
-              {form.end_image_url && (
-                <img src={form.end_image_url} alt="" style={{ width: "100%", height: 80, objectFit: "cover", borderRadius: 6, marginTop: 6 }} />
-              )}
             </div>
-          </div>
+          )}
 
+          {/* Reference model: images, videos, audios */}
+          {mt === "ref" && (
+            <div style={{ background: "rgba(139,92,246,0.05)", border: "0.5px solid rgba(139,92,246,0.2)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
+              <ReferenceList
+                label="Reference images (up to 9) — @Image1, @Image2…"
+                urls={form.reference_image_urls}
+                onChange={v => set("reference_image_urls", v)}
+                accept="image/jpeg,image/png,image/webp"
+                maxItems={9}
+                endpoint="/upload/image"
+              />
+              <ReferenceList
+                label="Reference videos (up to 3) — @Video1, @Video2…"
+                urls={form.reference_video_urls}
+                onChange={v => set("reference_video_urls", v)}
+                accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
+                maxItems={3}
+                endpoint="/upload/media"
+              />
+              <ReferenceList
+                label="Reference audio (up to 3) — @Audio1, @Audio2…"
+                urls={form.reference_audio_urls}
+                onChange={v => set("reference_audio_urls", v)}
+                accept="audio/mpeg,audio/wav,.mp3,.wav"
+                maxItems={3}
+                endpoint="/upload/media"
+              />
+            </div>
+          )}
+
+          {/* Settings row */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
             <div>
               <label style={labelStyle}>Resolution</label>
               <select value={form.resolution} onChange={e => set("resolution", e.target.value)} style={inputStyle}>
-                {RESOLUTIONS.map(r => <option key={r}>{r}</option>)}
+                {resolutions.map(r => <option key={r}>{r}</option>)}
               </select>
             </div>
             <div>
@@ -337,7 +554,7 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
           </div>
 
           {clip.error_message && (
-            <div style={{ background: "#FCEBEB", border: "0.5px solid #F09595", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#A32D2D", marginBottom: 10 }}>
+            <div style={{ background: "rgba(248,113,113,0.08)", border: "0.5px solid rgba(248,113,113,0.35)", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#F87171", marginBottom: 10 }}>
               {clip.error_message}
             </div>
           )}
@@ -347,17 +564,17 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
             <div style={{ display: "flex", gap: 6 }}>
               <button style={smallBtnStyle} onClick={() => onMoveUp(index)} disabled={index === 0} title="Move up">↑</button>
               <button style={smallBtnStyle} onClick={() => onMoveDown(index)} disabled={isLast} title="Move down">↓</button>
-              <button style={{ ...smallBtnStyle, color: "#A32D2D", borderColor: "#F09595" }} onClick={() => onDelete(clip.id)} title="Delete clip">✕</button>
+              <button style={{ ...smallBtnStyle, color: "#F87171", borderColor: "rgba(248,113,113,0.4)" }} onClick={() => onDelete(clip.id)} title="Delete clip">✕</button>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {dirty && (
-                <button onClick={handleSave} style={{ ...smallBtnStyle, background: "#E6F1FB", borderColor: "#B5D4F4", color: "#185FA5" }}>Save changes</button>
+                <button onClick={handleSave} style={{ ...smallBtnStyle, background: "rgba(96,165,250,0.10)", borderColor: "rgba(96,165,250,0.35)", color: "#60A5FA" }}>Save changes</button>
               )}
               {clip.status === "complete" && !isLast && (
                 <button
                   onClick={handleUseAsNext}
                   disabled={transferring}
-                  style={{ ...smallBtnStyle, background: "#F5EDFF", borderColor: "#D0AEFF", color: "#6B21A8" }}
+                  style={{ ...smallBtnStyle, background: "rgba(139,92,246,0.10)", borderColor: "rgba(139,92,246,0.35)", color: "#A78BFA" }}
                   title="Extract last frame and use as start of next clip"
                 >
                   {transferring ? <Spinner /> : "→ Use as next start"}
@@ -366,7 +583,7 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
               {isPassthrough ? (
                 clip.video_url && (
                   <a href={clip.video_url} target="_blank" rel="noreferrer"
-                    style={{ ...smallBtnStyle, textDecoration: "none", background: "#F5EDFF", borderColor: "#D0AEFF", color: "#6B21A8" }}>
+                    style={{ ...smallBtnStyle, textDecoration: "none", background: "rgba(139,92,246,0.10)", borderColor: "rgba(139,92,246,0.35)", color: "#A78BFA" }}>
                     ▶ View original
                   </a>
                 )
@@ -375,8 +592,8 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
               ) : (
                 <button
                   onClick={() => onGenerate(clip.id)}
-                  disabled={!form.image_url || form.image_url === "https://example.com/placeholder.jpg" || !form.prompt || projectStatus === "rendering"}
-                  style={{ ...smallBtnStyle, background: "#EAF3DE", borderColor: "#C0DD97", color: "#3B6D11" }}
+                  disabled={!canGenerate}
+                  style={{ ...smallBtnStyle, background: "rgba(74,222,128,0.10)", borderColor: "rgba(74,222,128,0.35)", color: "#4ADE80" }}
                 >
                   ▶ Generate clip
                 </button>
@@ -439,20 +656,20 @@ function ExtendPanel({ project, onClipsAdded, onLog }) {
         onClick={() => { setOpen(o => !o); setResult(null); setError(null); }}
         style={{
           ...smallBtnStyle,
-          background: open ? "#F5EDFF" : "var(--color-background-secondary)",
-          borderColor: open ? "#D0AEFF" : "var(--color-border-secondary)",
-          color: open ? "#6B21A8" : "var(--color-text-secondary)",
+          background: open ? "rgba(139,92,246,0.12)" : "var(--color-background-secondary)",
+          borderColor: open ? "rgba(139,92,246,0.4)" : "var(--color-border-secondary)",
+          color: open ? "#A78BFA" : "var(--color-text-secondary)",
           width: "100%", justifyContent: "center", padding: "8px 12px",
         }}
       >
-        🎬 Extend from movie short (AI scene generator)
+        <IconClapperboard size={15} /> Extend from movie short (AI scene generator)
       </button>
 
       {open && (
         <div style={{
           background: "var(--color-background-secondary)", borderRadius: 10,
           padding: "14px", marginTop: 6,
-          border: "0.5px solid #D0AEFF",
+          border: "0.5px solid rgba(139,92,246,0.3)",
         }}>
           <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>
             Upload a movie short — Claude Opus analyzes the characters, style, and story,
@@ -493,7 +710,7 @@ function ExtendPanel({ project, onClipsAdded, onLog }) {
             <div>
               <label style={labelStyle}>Resolution</label>
               <select value={resolution} onChange={e => setResolution(e.target.value)} style={inputStyle}>
-                {RESOLUTIONS.map(r => <option key={r}>{r}</option>)}
+                {["720p", "480p"].map(r => <option key={r}>{r}</option>)}
               </select>
             </div>
             <div>
@@ -510,33 +727,33 @@ function ExtendPanel({ project, onClipsAdded, onLog }) {
             </div>
           </div>
 
-          <div style={{ marginBottom: 10, fontSize: 12, color: "#6B21A8", background: "#F5EDFF", borderRadius: 6, padding: "7px 10px" }}>
+          <div style={{ marginBottom: 10, fontSize: 12, color: "#A78BFA", background: "rgba(139,92,246,0.08)", borderRadius: 6, padding: "7px 10px" }}>
             Tip: After scenes are created, use <strong>Sequential render + Chain clips</strong> — each clip's last frame automatically becomes the next clip's start frame to keep characters consistent.
           </div>
 
           {error && (
-            <div style={{ background: "#FCEBEB", border: "0.5px solid #F09595", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#A32D2D", marginBottom: 10 }}>
+            <div style={{ background: "rgba(248,113,113,0.08)", border: "0.5px solid rgba(248,113,113,0.35)", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#F87171", marginBottom: 10 }}>
               {error}
             </div>
           )}
 
           {result && !error && (
-            <div style={{ background: "#EAF3DE", border: "0.5px solid #C0DD97", borderRadius: 6, padding: "10px 12px", marginBottom: 10, fontSize: 12 }}>
-              <div style={{ fontWeight: 500, color: "#3B6D11", marginBottom: 6 }}>
+            <div style={{ background: "rgba(74,222,128,0.08)", border: "0.5px solid rgba(74,222,128,0.3)", borderRadius: 6, padding: "10px 12px", marginBottom: 10, fontSize: 12 }}>
+              <div style={{ fontWeight: 500, color: "#4ADE80", marginBottom: 6 }}>
                 ✓ Storyboard generated — {result.clips.length - 1} new scenes added
               </div>
               {result.story_so_far && (
-                <div style={{ color: "#4A6D2B", marginBottom: 4 }}>
+                <div style={{ color: "#86EFAC", marginBottom: 4 }}>
                   <strong>Story so far:</strong> {result.story_so_far}
                 </div>
               )}
               {result.visual_style && (
-                <div style={{ color: "#4A6D2B", marginBottom: 4 }}>
+                <div style={{ color: "#86EFAC", marginBottom: 4 }}>
                   <strong>Visual style:</strong> {result.visual_style}
                 </div>
               )}
               {result.character_anchors?.length > 0 && (
-                <div style={{ color: "#4A6D2B" }}>
+                <div style={{ color: "#86EFAC" }}>
                   <strong>Characters:</strong>{" "}
                   {result.character_anchors.map(c => `${c.tag}: ${c.description}`).join(" · ")}
                 </div>
@@ -549,14 +766,14 @@ function ExtendPanel({ project, onClipsAdded, onLog }) {
             disabled={!file || loading}
             style={{
               ...smallBtnStyle,
-              background: loading ? "#F5EDFF" : "#7C3AED",
+              background: loading ? "rgba(139,92,246,0.15)" : "#7C3AED",
               borderColor: "#6D28D9",
               color: "#fff",
               padding: "8px 16px",
               opacity: (!file || loading) ? 0.6 : 1,
             }}
           >
-            {loading ? <><Spinner /> Analyzing with Claude Opus…</> : "✦ Analyze & generate scenes"}
+            {loading ? <><Spinner /> Analyzing with Claude Opus…</> : <><IconSparkles size={14} /> Analyze & generate scenes</>}
           </button>
         </div>
       )}
@@ -606,7 +823,7 @@ function ProjectView({ project, onBack }) {
     };
 
     es.onmessage = async (e) => {
-      sseRetryDelayRef.current = 1000; // reset backoff on any successful message
+      sseRetryDelayRef.current = 1000;
       const event = JSON.parse(e.data);
       if (event.type === "clip_complete") {
         log(`✓ Clip ${event.clip_id} complete`);
@@ -623,9 +840,9 @@ function ProjectView({ project, onBack }) {
       } else if (event.type === "chain_complete") {
         log(`⛓ Clip ${event.from_clip} → ${event.to_clip} chained`);
       } else if (event.type === "stitch_start") {
-        log("✂ Stitching clips...");
+        log("Stitching clips...");
       } else if (event.type === "stitch_complete") {
-        log("🎬 Stitch complete!");
+        log("Stitch complete — final video ready");
         await onTerminal();
       } else if (event.type === "done") {
         if (event.error) log(`Error: ${event.error}`);
@@ -753,7 +970,14 @@ function ProjectView({ project, onBack }) {
 
   const completeClips = clips.filter(c => c.status === "complete");
   const allComplete = clips.length > 0 && clips.every(c => c.status === "complete");
-  const validClips = clips.filter(c => !c.is_passthrough && c.image_url && c.image_url !== "https://example.com/placeholder.jpg" && c.prompt);
+  const validClips = clips.filter(c => {
+    if (c.is_passthrough) return false;
+    if (!c.prompt) return false;
+    const mt = MODEL_TYPE(c.model || "fast-i2v");
+    if (mt === "i2v") return c.image_url && c.image_url !== "https://example.com/placeholder.jpg";
+    if (mt === "ref") return (c.reference_image_urls?.length > 0 || c.reference_video_urls?.length > 0);
+    return true; // t2v: just needs prompt
+  });
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 0 40px" }}>
@@ -763,7 +987,7 @@ function ProjectView({ project, onBack }) {
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
         <button onClick={onBack} style={{ ...smallBtnStyle, fontSize: 13 }}>← Projects</button>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 18, fontWeight: 500, color: "var(--color-text-primary)" }}>{proj.name}</div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: "var(--color-text-primary)" }}>{proj.name}</div>
           {proj.description && <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>{proj.description}</div>}
         </div>
         <Badge status={proj.status} />
@@ -782,13 +1006,15 @@ function ProjectView({ project, onBack }) {
 
       {/* Final video */}
       {proj.final_video_url && (
-        <div style={{ background: "#EAF3DE", border: "0.5px solid #C0DD97", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 20 }}>🎬</span>
+        <div style={{ background: "rgba(74,222,128,0.07)", border: "0.5px solid rgba(74,222,128,0.3)", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ color: "#4ADE80", flexShrink: 0, display: "flex" }}><IconClapperboard size={20} /></span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500, color: "#3B6D11", fontSize: 14 }}>Final video ready</div>
-            <div style={{ fontSize: 12, color: "#639922", marginTop: 2, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>{proj.final_video_url}</div>
+            <div style={{ fontWeight: 500, color: "#4ADE80", fontSize: 14 }}>Final video ready</div>
+            <div style={{ fontSize: 12, color: "#86EFAC", marginTop: 2, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>{proj.final_video_url}</div>
           </div>
-          <a href={`${API}/projects/${proj.id}/download`} style={{ ...smallBtnStyle, textDecoration: "none", background: "#C0DD97", borderColor: "#97C459", color: "#27500A" }}>⬇ Download</a>
+          <a href={`${API}/projects/${proj.id}/download`} style={{ ...smallBtnStyle, textDecoration: "none", background: "rgba(74,222,128,0.12)", borderColor: "rgba(74,222,128,0.4)", color: "#4ADE80" }}>
+            <IconDownload size={13} /> Download
+          </a>
         </div>
       )}
 
@@ -800,17 +1026,19 @@ function ProjectView({ project, onBack }) {
           <button
             onClick={() => startRender(false)}
             disabled={rendering || clips.length === 0 || proj.status === "rendering"}
-            style={{ ...smallBtnStyle, background: "#E6F1FB", borderColor: "#B5D4F4", color: "#185FA5" }}
+            style={{ ...smallBtnStyle, background: "rgba(96,165,250,0.10)", borderColor: "rgba(96,165,250,0.35)", color: "#60A5FA" }}
           >▶ Sequential</button>
 
           <button
             onClick={() => startRender(true)}
             disabled={rendering || clips.length === 0 || proj.status === "rendering"}
             style={smallBtnStyle}
-          >⚡ Parallel</button>
+          ><IconZap /> Parallel</button>
 
           {completeClips.length > 0 && !allComplete && (
-            <button onClick={stitch} style={{ ...smallBtnStyle, background: "#FAEEDA", borderColor: "#FAC775", color: "#854F0B" }}>✂ Stitch ready clips</button>
+            <button onClick={stitch} style={{ ...smallBtnStyle, background: "rgba(251,191,36,0.10)", borderColor: "rgba(251,191,36,0.35)", color: "#FBBF24" }}>
+              <IconScissors /> Stitch ready clips
+            </button>
           )}
 
           <span style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginLeft: "auto" }}>
@@ -822,12 +1050,12 @@ function ProjectView({ project, onBack }) {
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--color-text-secondary)", cursor: "pointer" }}>
             <input type="checkbox" checked={draftMode} onChange={e => setDraftMode(e.target.checked)} />
-            <span style={{ color: draftMode ? "#3B6D11" : "inherit" }}>Draft mode (480p, ~30% cheaper)</span>
+            <span style={{ color: draftMode ? "#4ADE80" : "inherit" }}>Draft mode (480p, ~30% cheaper)</span>
           </label>
 
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--color-text-secondary)", cursor: "pointer" }} title="Sequential only: extract last frame of each clip and use it as the start of the next clip to maintain character continuity">
             <input type="checkbox" checked={autoChain} onChange={e => setAutoChain(e.target.checked)} />
-            <span style={{ color: autoChain ? "#6B21A8" : "inherit" }}>Chain clips (keep characters consistent)</span>
+            <span style={{ color: autoChain ? "#A78BFA" : "inherit" }}>Chain clips (keep characters consistent)</span>
           </label>
 
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--color-text-secondary)" }}>
@@ -848,7 +1076,7 @@ function ProjectView({ project, onBack }) {
           <button
             onClick={() => setShowCostEstimate(s => !s)}
             style={{ ...smallBtnStyle, fontSize: 11 }}
-          >💰 {showCostEstimate ? "Hide" : "Estimate cost"}</button>
+          ><IconCoin size={13} /> {showCostEstimate ? "Hide" : "Estimate cost"}</button>
         </div>
 
         {showCostEstimate && validClips.length > 0 && (
@@ -953,10 +1181,17 @@ function ProjectList({ onSelect }) {
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 500, color: "var(--color-text-primary)" }}>CineChain</div>
+          <div style={{ fontSize: 24, fontWeight: 600, color: "var(--color-text-primary)", letterSpacing: "-0.5px" }}>
+            <span style={{ color: "#E11D48" }}>Cine</span>Chain
+          </div>
           <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>Cinematic multi-clip video generator · Seedance 2.0</div>
         </div>
-        <button onClick={() => setCreating(c => !c)} style={{ ...smallBtnStyle, background: creating ? "#FCEBEB" : "#EAF3DE", borderColor: creating ? "#F09595" : "#C0DD97", color: creating ? "#A32D2D" : "#3B6D11" }}>
+        <button onClick={() => setCreating(c => !c)} style={{
+          ...smallBtnStyle,
+          background: creating ? "rgba(248,113,113,0.10)" : "rgba(74,222,128,0.10)",
+          borderColor: creating ? "rgba(248,113,113,0.4)" : "rgba(74,222,128,0.4)",
+          color: creating ? "#F87171" : "#4ADE80",
+        }}>
           {creating ? "✕ Cancel" : "+ New project"}
         </button>
       </div>
@@ -974,12 +1209,12 @@ function ProjectList({ onSelect }) {
               <input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Brief synopsis or notes..." style={inputStyle} />
             </div>
           </div>
-          <button onClick={createProject} disabled={!newName.trim()} style={{ ...smallBtnStyle, background: "#E6F1FB", borderColor: "#B5D4F4", color: "#185FA5" }}>Create project →</button>
+          <button onClick={createProject} disabled={!newName.trim()} style={{ ...smallBtnStyle, background: "rgba(96,165,250,0.10)", borderColor: "rgba(96,165,250,0.35)", color: "#60A5FA" }}>Create project →</button>
         </div>
       )}
 
       {error && (
-        <div style={{ background: "#FCEBEB", border: "0.5px solid #F09595", borderRadius: 10, padding: "12px 14px", marginBottom: 16, fontSize: 13, color: "#A32D2D", fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap" }}>
+        <div style={{ background: "rgba(248,113,113,0.08)", border: "0.5px solid rgba(248,113,113,0.35)", borderRadius: 10, padding: "12px 14px", marginBottom: 16, fontSize: 13, color: "#F87171", fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap" }}>
           {error}
         </div>
       )}
@@ -1012,10 +1247,10 @@ function ProjectList({ onSelect }) {
               </div>
             </div>
             <Badge status={p.status} />
-            {p.final_video_url && <span style={{ fontSize: 11, color: "#3B6D11" }}>✓ video</span>}
+            {p.final_video_url && <span style={{ fontSize: 11, color: "#4ADE80" }}>✓ video</span>}
             <button
               onClick={(e) => deleteProject(p.id, e)}
-              style={{ ...smallBtnStyle, color: "#A32D2D", borderColor: "#F09595", fontSize: 11, padding: "3px 8px" }}
+              style={{ ...smallBtnStyle, color: "#F87171", borderColor: "rgba(248,113,113,0.4)", fontSize: 11, padding: "3px 8px" }}
             >✕</button>
           </div>
         ))
