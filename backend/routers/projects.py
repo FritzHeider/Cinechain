@@ -98,8 +98,10 @@ async def update_clip(project_id: int, clip_id: int, data: ClipUpdate, db: Async
     clip = await _require_clip(project_id, clip_id, db)
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(clip, field, value)
-    # Reset status if prompt/image changes
-    if data.prompt is not None or data.image_url is not None:
+    # Reset status if prompt, image, model, or references change
+    if (data.prompt is not None or data.image_url is not None or data.model is not None
+            or data.reference_image_urls is not None or data.reference_video_urls is not None
+            or data.reference_audio_urls is not None):
         clip.status = "pending"
         clip.video_url = None
         clip.fal_request_id = None

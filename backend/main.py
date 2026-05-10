@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import settings
 from database import init_db
-from routers import projects, render, upload, extend
+from routers import projects, render, upload
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,7 +58,6 @@ app.add_middleware(
 app.include_router(projects.router)
 app.include_router(render.router)
 app.include_router(upload.router)
-app.include_router(extend.router)
 
 # Serve final output videos only — uploads are temp files, not publicly exposed
 app.mount("/outputs", StaticFiles(directory=str(settings.output_dir)), name="outputs")

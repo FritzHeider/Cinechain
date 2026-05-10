@@ -23,7 +23,6 @@ const PROMPT_PRESETS = [
   { label: "Dutch tilt push", value: "Dutch angle tilt with slow push forward, tension building" },
 ];
 
-// Cost per second by resolution
 const COST_PER_SEC = { "720p": 0.2419, "480p": 0.169, "1080p": 0.4838 };
 
 const STATUS_COLOR = {
@@ -37,11 +36,18 @@ const STATUS_BG = {
   rendering: "rgba(251,191,36,0.14)",
 };
 
-// Seedance model helpers
 function MODEL_TYPE(key) {
   if (key === "fast-t2v" || key === "pro-t2v") return "t2v";
   if (key === "fast-ref" || key === "pro-ref") return "ref";
   return "i2v";
+}
+
+// [IMPROVEMENT 7] Color badge per model type
+function modelBadgeStyle(key) {
+  const t = MODEL_TYPE(key);
+  if (t === "t2v") return { color: "#4ADE80", background: "rgba(74,222,128,0.12)", border: "0.5px solid rgba(74,222,128,0.25)" };
+  if (t === "ref") return { color: "#A78BFA", background: "rgba(139,92,246,0.12)", border: "0.5px solid rgba(139,92,246,0.25)" };
+  return { color: "#60A5FA", background: "rgba(96,165,250,0.12)", border: "0.5px solid rgba(96,165,250,0.25)" };
 }
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
@@ -54,7 +60,6 @@ function IconFilm({ size = 18 }) {
     </svg>
   );
 }
-
 function IconCoin({ size = 14 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -63,7 +68,6 @@ function IconCoin({ size = 14 }) {
     </svg>
   );
 }
-
 function IconClapperboard({ size = 18 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -73,7 +77,6 @@ function IconClapperboard({ size = 18 }) {
     </svg>
   );
 }
-
 function IconSparkles({ size = 14 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -82,7 +85,6 @@ function IconSparkles({ size = 14 }) {
     </svg>
   );
 }
-
 function IconDownload({ size = 14 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -92,7 +94,6 @@ function IconDownload({ size = 14 }) {
     </svg>
   );
 }
-
 function IconScissors({ size = 13 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -103,7 +104,6 @@ function IconScissors({ size = 13 }) {
     </svg>
   );
 }
-
 function IconZap({ size = 13 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -123,7 +123,6 @@ function Badge({ status, label }) {
     }}>{label || status}</span>
   );
 }
-
 function Spinner() {
   return (
     <span style={{
@@ -133,17 +132,13 @@ function Spinner() {
     }} />
   );
 }
-
 const spinKeyframes = `@keyframes spin { to { transform: rotate(360deg); } }`;
 
-// ─── Filmstrip thumbnail strip ────────────────────────────────────────────────
+// ─── FilmStrip ────────────────────────────────────────────────────────────────
 function FilmStrip({ clips }) {
   if (clips.length === 0) return null;
   return (
-    <div style={{
-      display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8,
-      marginBottom: 16, scrollbarWidth: "thin",
-    }}>
+    <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8, marginBottom: 16, scrollbarWidth: "thin" }}>
       {clips.map((clip, i) => (
         <div key={clip.id} style={{ flexShrink: 0, position: "relative" }}>
           <div style={{
@@ -161,17 +156,9 @@ function FilmStrip({ clips }) {
               </div>
             )}
           </div>
-          <div style={{
-            position: "absolute", bottom: 3, left: 3,
-            background: "rgba(0,0,0,0.65)", borderRadius: 3,
-            fontSize: 9, color: "#fff", padding: "1px 4px",
-          }}>{i + 1}</div>
+          <div style={{ position: "absolute", bottom: 3, left: 3, background: "rgba(0,0,0,0.65)", borderRadius: 3, fontSize: 9, color: "#fff", padding: "1px 4px" }}>{i + 1}</div>
           {clip.status === "generating" && (
-            <div style={{
-              position: "absolute", inset: 0, borderRadius: 6,
-              background: "rgba(0,0,0,0.4)", display: "flex",
-              alignItems: "center", justifyContent: "center",
-            }}><Spinner /></div>
+            <div style={{ position: "absolute", inset: 0, borderRadius: 6, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}><Spinner /></div>
           )}
         </div>
       ))}
@@ -179,8 +166,10 @@ function FilmStrip({ clips }) {
   );
 }
 
-// ─── Cost estimate banner ─────────────────────────────────────────────────────
+// ─── CostEstimate ─────────────────────────────────────────────────────────────
+// [IMPROVEMENT 6] Per-clip breakdown table toggle
 function CostEstimate({ clips, draft }) {
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const { totalCost, totalSec } = clips.reduce((acc, c) => {
     const d = c.duration === "auto" ? 6 : parseInt(c.duration, 10);
     const res = draft ? "480p" : (c.resolution || "720p");
@@ -188,17 +177,48 @@ function CostEstimate({ clips, draft }) {
   }, { totalCost: 0, totalSec: 0 });
 
   return (
-    <div style={{
-      background: "rgba(251,191,36,0.08)", border: "0.5px solid rgba(251,191,36,0.3)",
-      borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "#FBBF24",
-      display: "flex", alignItems: "center", gap: 8,
-    }}>
-      <IconCoin size={14} />
-      <span>
-        Estimated cost: <strong>${totalCost.toFixed(2)}</strong> &nbsp;·&nbsp;
-        {totalSec}s total
-        {draft && <span style={{ color: "#4ADE80", marginLeft: 6 }}>✓ Draft mode saves ~30%</span>}
-      </span>
+    <div style={{ background: "rgba(251,191,36,0.08)", border: "0.5px solid rgba(251,191,36,0.3)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "#FBBF24" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <IconCoin size={14} />
+        <span style={{ flex: 1 }}>
+          Estimated cost: <strong>${totalCost.toFixed(2)}</strong> &nbsp;·&nbsp; {totalSec}s total
+          {draft && <span style={{ color: "#4ADE80", marginLeft: 6 }}>✓ Draft mode saves ~30%</span>}
+        </span>
+        <button
+          onClick={() => setShowBreakdown(s => !s)}
+          style={{ ...smallBtnStyle, fontSize: 10, padding: "2px 8px", color: "#FBBF24", borderColor: "rgba(251,191,36,0.3)", background: "transparent" }}
+        >{showBreakdown ? "Hide" : "Breakdown"}</button>
+      </div>
+      {showBreakdown && (
+        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8, fontSize: 11 }}>
+          <thead>
+            <tr style={{ borderBottom: "0.5px solid rgba(251,191,36,0.2)" }}>
+              <th style={{ textAlign: "left", padding: "3px 0", fontWeight: 500, color: "rgba(251,191,36,0.7)" }}>Clip</th>
+              <th style={{ textAlign: "center", fontWeight: 500, color: "rgba(251,191,36,0.7)" }}>Model</th>
+              <th style={{ textAlign: "center", fontWeight: 500, color: "rgba(251,191,36,0.7)" }}>Duration</th>
+              <th style={{ textAlign: "center", fontWeight: 500, color: "rgba(251,191,36,0.7)" }}>Res</th>
+              <th style={{ textAlign: "right", fontWeight: 500, color: "rgba(251,191,36,0.7)" }}>Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {clips.map((c, i) => {
+              const d = c.duration === "auto" ? 6 : parseInt(c.duration, 10);
+              const res = draft ? "480p" : (c.resolution || "720p");
+              const cost = d * (COST_PER_SEC[res] || COST_PER_SEC["720p"]);
+              const { color } = modelBadgeStyle(c.model || "fast-i2v");
+              return (
+                <tr key={c.id} style={{ borderBottom: "0.5px solid rgba(251,191,36,0.08)" }}>
+                  <td style={{ padding: "3px 0 3px 2px", color: "#FBBF24", opacity: 0.8 }}>{c.name || `Clip ${i + 1}`}</td>
+                  <td style={{ textAlign: "center", color, fontFamily: "var(--font-mono)", fontSize: 10 }}>{c.model || "fast-i2v"}</td>
+                  <td style={{ textAlign: "center", color: "#FBBF24", opacity: 0.7 }}>{c.duration === "auto" ? "~6s" : `${c.duration}s`}</td>
+                  <td style={{ textAlign: "center", color: "#FBBF24", opacity: 0.7 }}>{res}</td>
+                  <td style={{ textAlign: "right", fontFamily: "var(--font-mono)", color: "#FBBF24" }}>${cost.toFixed(3)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
@@ -207,11 +227,7 @@ function CostEstimate({ clips, draft }) {
 function ReferenceList({ label, urls, onChange, accept, maxItems, endpoint }) {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef();
-
   const items = urls || [];
-  const add = url => onChange([...items, url]);
-  const remove = i => onChange(items.filter((_, idx) => idx !== i));
-  const update = (i, url) => onChange(items.map((u, idx) => idx === i ? url : u));
 
   const handleUpload = async (file) => {
     setUploading(true);
@@ -220,7 +236,7 @@ function ReferenceList({ label, urls, onChange, accept, maxItems, endpoint }) {
     try {
       const r = await fetch(`${API}${endpoint}`, { method: "POST", body: fd });
       const data = await r.json();
-      add(data.url);
+      onChange([...items, data.url]);
     } catch (e) { alert("Upload failed: " + e.message); }
     setUploading(false);
   };
@@ -236,28 +252,34 @@ function ReferenceList({ label, urls, onChange, accept, maxItems, endpoint }) {
             <button onClick={() => fileRef.current.click()} style={{ ...smallBtnStyle, fontSize: 11 }}>
               {uploading ? <Spinner /> : "↑ Upload"}
             </button>
-            <button onClick={() => add("")} style={{ ...smallBtnStyle, fontSize: 11 }}>+ URL</button>
+            <button onClick={() => onChange([...items, ""])} style={{ ...smallBtnStyle, fontSize: 11 }}>+ URL</button>
           </div>
         )}
       </div>
       {items.map((url, i) => (
         <div key={i} style={{ display: "flex", gap: 6, marginBottom: 5 }}>
-          <input value={url} onChange={e => update(i, e.target.value)} placeholder="https://..." style={{ ...inputStyle, flex: 1, fontSize: 12 }} />
-          <button onClick={() => remove(i)} style={{ ...smallBtnStyle, color: "#F87171", borderColor: "rgba(248,113,113,0.4)", padding: "5px 8px" }}>✕</button>
+          <input value={url} onChange={e => onChange(items.map((u, idx) => idx === i ? e.target.value : u))}
+            placeholder="https://..." style={{ ...inputStyle, flex: 1, fontSize: 12 }} />
+          <button onClick={() => onChange(items.filter((_, idx) => idx !== i))}
+            style={{ ...smallBtnStyle, color: "#F87171", borderColor: "rgba(248,113,113,0.4)", padding: "5px 8px" }}>✕</button>
         </div>
       ))}
       {items.length === 0 && (
-        <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", padding: "4px 0" }}>
-          No references — upload a file or paste a URL above.
-        </div>
+        <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", padding: "4px 0" }}>No references — upload or paste a URL.</div>
       )}
     </div>
   );
 }
 
 // ─── ClipCard ─────────────────────────────────────────────────────────────────
-function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown, onGenerate, onPoll, onUseAsNext, projectStatus }) {
-  const [expanded, setExpanded] = useState(false);
+function ClipCard({
+  clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown,
+  onGenerate, onPoll, onUseAsNext, onDuplicate, projectStatus,
+  // [IMPROVEMENT 2] Drag-to-reorder
+  onDragStart, onDragOver, onDrop, onDragEnd, isDragOver,
+  // [IMPROVEMENT 4] Expand/collapse all (fully controlled from parent)
+  expanded, onToggle,
+}) {
   const [form, setForm] = useState({
     name: clip.name || "",
     prompt: clip.prompt || "",
@@ -271,13 +293,16 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
     duration: clip.duration || "auto",
     aspect_ratio: clip.aspect_ratio || "auto",
     generate_audio: clip.generate_audio !== false,
+    seed: clip.seed ?? null,
     transition_type: clip.transition_type || "fade",
   });
   const [dirty, setDirty] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [transferring, setTransferring] = useState(false);
+  const [seedCopied, setSeedCopied] = useState(false);
   const fileRef = useRef();
   const endFileRef = useRef();
+  const saveTimerRef = useRef(null);
 
   const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setDirty(true); };
   const mt = MODEL_TYPE(form.model);
@@ -296,8 +321,10 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
   };
 
   const handleSave = async () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     await onUpdate(clip.id, {
       ...form,
+      seed: form.seed || null,
       end_image_url: form.end_image_url || null,
       reference_image_urls: form.reference_image_urls?.length > 0 ? form.reference_image_urls : null,
       reference_video_urls: form.reference_video_urls?.length > 0 ? form.reference_video_urls : null,
@@ -306,15 +333,36 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
     setDirty(false);
   };
 
+  // Auto-save: debounce 1.5s after each form change
+  useEffect(() => {
+    if (!dirty) return;
+    saveTimerRef.current = setTimeout(handleSave, 1500);
+    return () => clearTimeout(saveTimerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form]);
+
+  const handleGenerate = async () => {
+    if (dirty) await handleSave();
+    onGenerate(clip.id);
+  };
+
   const handleUseAsNext = async () => {
     setTransferring(true);
     await onUseAsNext(clip.id);
     setTransferring(false);
   };
 
+  // [IMPROVEMENT 9] Copy seed to clipboard
+  const copySeed = () => {
+    navigator.clipboard.writeText(String(clip.video_seed));
+    setSeedCopied(true);
+    setTimeout(() => setSeedCopied(false), 1500);
+  };
+
   const isGenerating = clip.status === "queued" || clip.status === "generating";
   const isLast = index === total - 1;
   const isPassthrough = clip.is_passthrough;
+  const badgeStyle = modelBadgeStyle(form.model);
 
   const canGenerate = !isPassthrough && !!form.prompt && projectStatus !== "rendering" && (
     mt === "t2v" ||
@@ -323,33 +371,35 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
   );
 
   return (
-    <div style={{
-      background: "var(--color-background-primary)",
-      border: `0.5px solid ${clip.status === "error" ? "rgba(248,113,113,0.5)" : isPassthrough ? "rgba(139,92,246,0.4)" : "var(--color-border-tertiary)"}`,
-      borderRadius: 12, marginBottom: 10, overflow: "hidden", transition: "border-color 0.15s",
-    }}>
+    <div
+      // [IMPROVEMENT 2] Drag-to-reorder
+      draggable={!isPassthrough}
+      onDragStart={e => { e.dataTransfer.effectAllowed = "move"; onDragStart?.(index); }}
+      onDragOver={e => { e.preventDefault(); onDragOver?.(index); }}
+      onDrop={e => { e.preventDefault(); onDrop?.(index); }}
+      onDragEnd={onDragEnd}
+      style={{
+        background: "var(--color-background-primary)",
+        border: `0.5px solid ${isDragOver ? "#60A5FA" : clip.status === "error" ? "rgba(248,113,113,0.5)" : isPassthrough ? "rgba(139,92,246,0.4)" : "var(--color-border-tertiary)"}`,
+        borderRadius: 12, marginBottom: 10, overflow: "hidden",
+        transition: "border-color 0.15s, opacity 0.15s",
+        opacity: isDragOver ? 0.6 : 1,
+        cursor: isPassthrough ? "default" : "grab",
+      }}
+    >
       {/* Card header */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
-        cursor: "pointer", userSelect: "none",
-      }} onClick={() => setExpanded(e => !e)}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", userSelect: "none" }}
+        onClick={onToggle}>
         <span style={{
-          width: 26, height: 26, borderRadius: "50%",
-          background: "var(--color-background-secondary)",
+          width: 26, height: 26, borderRadius: "50%", background: "var(--color-background-secondary)",
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", flexShrink: 0,
         }}>{index + 1}</span>
 
         {isPassthrough && (
-          <span style={{
-            fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 20,
-            background: "rgba(139,92,246,0.12)", color: "#A78BFA",
-            border: "0.5px solid rgba(139,92,246,0.35)",
-            textTransform: "uppercase", letterSpacing: "0.05em", flexShrink: 0,
-          }}>Original</span>
+          <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 20, background: "rgba(139,92,246,0.12)", color: "#A78BFA", border: "0.5px solid rgba(139,92,246,0.35)", textTransform: "uppercase", letterSpacing: "0.05em", flexShrink: 0 }}>Original</span>
         )}
 
-        {/* Start frame thumb */}
         {(clip.thumbnail_url || (clip.image_url && clip.image_url !== "https://example.com/placeholder.jpg")) && (
           <div style={{ width: 40, height: 24, borderRadius: 4, overflow: "hidden", flexShrink: 0 }}>
             <img src={clip.thumbnail_url || clip.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -366,10 +416,9 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {/* [IMPROVEMENT 7] Colored model badge */}
           {!isPassthrough && (
-            <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", background: "var(--color-background-secondary)", padding: "1px 6px", borderRadius: 4 }}>
-              {form.model}
-            </span>
+            <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, fontFamily: "var(--font-mono)", ...badgeStyle }}>{form.model}</span>
           )}
           <Badge status={clip.status} />
           {isGenerating && <Spinner />}
@@ -391,7 +440,35 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
             </div>
           )}
 
-          {/* Row 1: name + aspect ratio */}
+          {/* [IMPROVEMENT 1] Inline video player */}
+          {clip.video_url && (
+            <div style={{ marginBottom: 12, borderRadius: 8, overflow: "hidden", background: "#000" }}>
+              <video src={clip.video_url} controls style={{ width: "100%", display: "block", maxHeight: 260, background: "#000" }} />
+            </div>
+          )}
+
+          {/* [IMPROVEMENT 9] Seed display after generation */}
+          {clip.status === "complete" && clip.video_seed != null && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "6px 10px", background: "var(--color-background-secondary)", borderRadius: 6, marginBottom: 12 }}>
+              <span style={{ color: "var(--color-text-tertiary)" }}>Seed:</span>
+              <code style={{ fontFamily: "var(--font-mono)", color: "#60A5FA", fontSize: 12 }}>{clip.video_seed}</code>
+              <button onClick={copySeed} style={{ ...smallBtnStyle, fontSize: 10, padding: "2px 8px" }}>
+                {seedCopied ? "✓ Copied" : "Copy"}
+              </button>
+              <button
+                onClick={() => { set("seed", clip.video_seed); }}
+                style={{ ...smallBtnStyle, fontSize: 10, padding: "2px 8px", color: form.seed === clip.video_seed ? "#FBBF24" : "var(--color-text-secondary)", borderColor: form.seed === clip.video_seed ? "rgba(251,191,36,0.4)" : "var(--color-border-secondary)" }}
+                title="Lock this seed so regenerations produce the same motion"
+              >
+                {form.seed === clip.video_seed ? "✓ Pinned" : "Pin seed"}
+              </button>
+              {form.seed && form.seed !== clip.video_seed && (
+                <button onClick={() => set("seed", null)} style={{ ...smallBtnStyle, fontSize: 10, padding: "2px 8px", color: "#F87171", borderColor: "rgba(248,113,113,0.3)" }}>Clear seed</button>
+              )}
+            </div>
+          )}
+
+          {/* Row: name + aspect ratio */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
             <div>
               <label style={labelStyle}>Clip name</label>
@@ -421,25 +498,16 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
                   <option value="pro-ref">Pro · Reference (images + video + audio)</option>
                 </optgroup>
               </select>
-              {mt === "ref" && (
-                <div style={{ fontSize: 11, color: "#A78BFA", marginTop: 4 }}>
-                  Reference model: use @Image1, @Video1, @Audio1 tags in your prompt to reference uploaded assets.
-                </div>
-              )}
-              {mt === "t2v" && (
-                <div style={{ fontSize: 11, color: "#60A5FA", marginTop: 4 }}>
-                  Text-to-video: no start frame needed — describe the full scene in the prompt.
-                </div>
-              )}
+              {mt === "ref" && <div style={{ fontSize: 11, color: "#A78BFA", marginTop: 4 }}>Use @Image1, @Video1, @Audio1 in your prompt to reference uploaded assets.</div>}
+              {mt === "t2v" && <div style={{ fontSize: 11, color: "#60A5FA", marginTop: 4 }}>Text-to-video: no start frame needed — describe the full scene in the prompt.</div>}
             </div>
           )}
 
-          {/* Motion prompt with presets */}
-          <div style={{ marginBottom: 10 }}>
+          {/* Prompt + preset picker */}
+          <div style={{ marginBottom: 4 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
               <label style={{ ...labelStyle, marginBottom: 0 }}>Motion prompt <span style={{ color: "#F87171" }}>*</span></label>
-              <select
-                defaultValue=""
+              <select defaultValue=""
                 onChange={e => { if (e.target.value) { set("prompt", e.target.value); e.target.value = ""; } }}
                 style={{ fontSize: 11, padding: "2px 6px", borderRadius: 5, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", cursor: "pointer" }}
               >
@@ -447,22 +515,23 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
                 {PROMPT_PRESETS.map(p => <option key={p.label} value={p.value}>{p.label}</option>)}
               </select>
             </div>
-            <textarea
-              value={form.prompt}
+            <textarea value={form.prompt}
               onChange={e => set("prompt", e.target.value)}
               placeholder={
-                mt === "ref"
-                  ? "Describe the scene. Use @Image1, @Video1, @Audio1 to reference your uploads..."
-                  : mt === "t2v"
-                  ? "Describe the full scene — setting, action, mood, camera movement..."
-                  : "Describe the motion, action, and mood of this clip..."
+                mt === "ref" ? "Describe the scene. Use @Image1, @Video1, @Audio1 to reference uploads..." :
+                mt === "t2v" ? "Describe the full scene — setting, action, mood, camera movement..." :
+                "Describe the motion, action, and mood of this clip..."
               }
               rows={3}
-              style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }}
+              style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5, marginBottom: 0 }}
             />
           </div>
+          {/* [IMPROVEMENT 8] Prompt character counter */}
+          <div style={{ textAlign: "right", fontSize: 10, color: form.prompt.length > 400 ? "#FBBF24" : "var(--color-text-tertiary)", marginBottom: 10 }}>
+            {form.prompt.length} chars
+          </div>
 
-          {/* Image-to-video: start + end frame */}
+          {/* i2v: start + end frame */}
           {mt === "i2v" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
               <div>
@@ -471,21 +540,19 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
                   <input value={form.image_url} onChange={e => set("image_url", e.target.value)} placeholder="https://..." style={{ ...inputStyle, flex: 1 }} />
                   <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
                     onChange={e => { if (e.target.files[0]) { handleUpload(e.target.files[0], "image_url"); e.target.value = ""; } }} />
-                  <button onClick={() => fileRef.current.click()} style={smallBtnStyle} title="Upload image">
-                    {uploading ? <Spinner /> : "↑"}
-                  </button>
+                  <button onClick={() => fileRef.current.click()} style={smallBtnStyle}>{uploading ? <Spinner /> : "↑"}</button>
                 </div>
                 {form.image_url && form.image_url !== "https://example.com/placeholder.jpg" && (
                   <img src={form.image_url} alt="" style={{ width: "100%", height: 80, objectFit: "cover", borderRadius: 6, marginTop: 6 }} />
                 )}
               </div>
               <div>
-                <label style={labelStyle}>End frame image URL <span style={{ color: "var(--color-text-tertiary)" }}>(optional)</span></label>
+                <label style={labelStyle}>End frame <span style={{ color: "var(--color-text-tertiary)" }}>(optional)</span></label>
                 <div style={{ display: "flex", gap: 6 }}>
                   <input value={form.end_image_url} onChange={e => set("end_image_url", e.target.value)} placeholder="https://..." style={{ ...inputStyle, flex: 1 }} />
                   <input ref={endFileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }}
                     onChange={e => { if (e.target.files[0]) { handleUpload(e.target.files[0], "end_image_url"); e.target.value = ""; } }} />
-                  <button onClick={() => endFileRef.current.click()} style={smallBtnStyle} title="Upload end frame">↑</button>
+                  <button onClick={() => endFileRef.current.click()} style={smallBtnStyle}>↑</button>
                 </div>
                 {form.end_image_url && (
                   <img src={form.end_image_url} alt="" style={{ width: "100%", height: 80, objectFit: "cover", borderRadius: 6, marginTop: 6 }} />
@@ -494,33 +561,15 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
             </div>
           )}
 
-          {/* Reference model: images, videos, audios */}
+          {/* ref: reference assets */}
           {mt === "ref" && (
             <div style={{ background: "rgba(139,92,246,0.05)", border: "0.5px solid rgba(139,92,246,0.2)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
-              <ReferenceList
-                label="Reference images (up to 9) — @Image1, @Image2…"
-                urls={form.reference_image_urls}
-                onChange={v => set("reference_image_urls", v)}
-                accept="image/jpeg,image/png,image/webp"
-                maxItems={9}
-                endpoint="/upload/image"
-              />
-              <ReferenceList
-                label="Reference videos (up to 3) — @Video1, @Video2…"
-                urls={form.reference_video_urls}
-                onChange={v => set("reference_video_urls", v)}
-                accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
-                maxItems={3}
-                endpoint="/upload/media"
-              />
-              <ReferenceList
-                label="Reference audio (up to 3) — @Audio1, @Audio2…"
-                urls={form.reference_audio_urls}
-                onChange={v => set("reference_audio_urls", v)}
-                accept="audio/mpeg,audio/wav,.mp3,.wav"
-                maxItems={3}
-                endpoint="/upload/media"
-              />
+              <ReferenceList label="Reference images (up to 9) — @Image1…" urls={form.reference_image_urls}
+                onChange={v => set("reference_image_urls", v)} accept="image/jpeg,image/png,image/webp" maxItems={9} endpoint="/upload/image" />
+              <ReferenceList label="Reference videos (up to 3) — @Video1…" urls={form.reference_video_urls}
+                onChange={v => set("reference_video_urls", v)} accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" maxItems={3} endpoint="/upload/media" />
+              <ReferenceList label="Reference audio (up to 3) — @Audio1…" urls={form.reference_audio_urls}
+                onChange={v => set("reference_audio_urls", v)} accept="audio/mpeg,audio/wav,.mp3,.wav" maxItems={3} endpoint="/upload/media" />
             </div>
           )}
 
@@ -564,20 +613,18 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
             <div style={{ display: "flex", gap: 6 }}>
               <button style={smallBtnStyle} onClick={() => onMoveUp(index)} disabled={index === 0} title="Move up">↑</button>
               <button style={smallBtnStyle} onClick={() => onMoveDown(index)} disabled={isLast} title="Move down">↓</button>
-              <button style={{ ...smallBtnStyle, color: "#F87171", borderColor: "rgba(248,113,113,0.4)" }} onClick={() => onDelete(clip.id)} title="Delete clip">✕</button>
+              {/* [IMPROVEMENT 5] Duplicate clip */}
+              <button style={{ ...smallBtnStyle, fontSize: 11 }} onClick={() => onDuplicate(clip)} title="Duplicate clip">⎘ Dupe</button>
+              <button style={{ ...smallBtnStyle, color: "#F87171", borderColor: "rgba(248,113,113,0.4)" }} onClick={() => onDelete(clip.id)} title="Delete">✕</button>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {dirty && (
-                <button onClick={handleSave} style={{ ...smallBtnStyle, background: "rgba(96,165,250,0.10)", borderColor: "rgba(96,165,250,0.35)", color: "#60A5FA" }}>Save changes</button>
+                <button onClick={handleSave} style={{ ...smallBtnStyle, background: "rgba(96,165,250,0.10)", borderColor: "rgba(96,165,250,0.35)", color: "#60A5FA" }}>Save</button>
               )}
               {clip.status === "complete" && !isLast && (
-                <button
-                  onClick={handleUseAsNext}
-                  disabled={transferring}
-                  style={{ ...smallBtnStyle, background: "rgba(139,92,246,0.10)", borderColor: "rgba(139,92,246,0.35)", color: "#A78BFA" }}
-                  title="Extract last frame and use as start of next clip"
-                >
-                  {transferring ? <Spinner /> : "→ Use as next start"}
+                <button onClick={handleUseAsNext} disabled={transferring}
+                  style={{ ...smallBtnStyle, background: "rgba(139,92,246,0.10)", borderColor: "rgba(139,92,246,0.35)", color: "#A78BFA" }}>
+                  {transferring ? <Spinner /> : "→ Use as next"}
                 </button>
               )}
               {isPassthrough ? (
@@ -588,14 +635,11 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
                   </a>
                 )
               ) : isGenerating ? (
-                <button onClick={() => onPoll(clip.id)} style={smallBtnStyle}><Spinner /> Poll status</button>
+                <button onClick={() => onPoll(clip.id)} style={smallBtnStyle}><Spinner /> Poll</button>
               ) : (
-                <button
-                  onClick={() => onGenerate(clip.id)}
-                  disabled={!canGenerate}
-                  style={{ ...smallBtnStyle, background: "rgba(74,222,128,0.10)", borderColor: "rgba(74,222,128,0.35)", color: "#4ADE80" }}
-                >
-                  ▶ Generate clip
+                <button onClick={handleGenerate} disabled={!canGenerate}
+                  style={{ ...smallBtnStyle, background: "rgba(74,222,128,0.10)", borderColor: "rgba(74,222,128,0.35)", color: "#4ADE80" }}>
+                  ▶ Generate
                 </button>
               )}
             </div>
@@ -606,177 +650,47 @@ function ClipCard({ clip, index, total, onUpdate, onDelete, onMoveUp, onMoveDown
   );
 }
 
-// ─── ExtendPanel ──────────────────────────────────────────────────────────────
-function ExtendPanel({ project, onClipsAdded, onLog }) {
-  const [open, setOpen] = useState(false);
-  const [file, setFile] = useState(null);
-  const [nScenes, setNScenes] = useState(4);
-  const [resolution, setResolution] = useState("720p");
-  const [aspectRatio, setAspectRatio] = useState("16:9");
-  const [duration, setDuration] = useState("8");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-  const fileRef = useRef();
+// ─── BatchPromptModal ─────────────────────────────────────────────────────────
+function BatchPromptModal({ clips, onSave, onClose }) {
+  const editable = clips.filter(c => !c.is_passthrough);
+  const [prompts, setPrompts] = useState(editable.map(c => ({ id: c.id, name: c.name || `Clip`, prompt: c.prompt || "" })));
 
-  const analyze = async () => {
-    if (!file) return;
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    onLog("Uploading video and analyzing with Claude Opus…");
-
-    const fd = new FormData();
-    fd.append("video", file);
-    fd.append("n_scenes", nScenes);
-    fd.append("resolution", resolution);
-    fd.append("aspect_ratio", aspectRatio);
-    fd.append("duration", duration);
-
-    try {
-      const r = await fetch(`${API}/projects/${project.id}/extend`, { method: "POST", body: fd });
-      if (!r.ok) {
-        const d = await r.json();
-        throw new Error(d.detail || `Server error ${r.status}`);
-      }
-      const data = await r.json();
-      setResult(data);
-      onClipsAdded(data.clips);
-      onLog(`✓ Generated ${data.clips.length} scenes (${data.clips.length - 1} new + original)`);
-    } catch (e) {
-      setError(e.message);
-      onLog(`✗ Extend failed: ${e.message}`);
-    }
-    setLoading(false);
+  const save = async () => {
+    const changed = prompts.filter(p => {
+      const orig = editable.find(c => c.id === p.id);
+      return orig && p.prompt !== orig.prompt;
+    });
+    await onSave(changed);
+    onClose();
   };
 
   return (
-    <div style={{ marginBottom: 10 }}>
-      <button
-        onClick={() => { setOpen(o => !o); setResult(null); setError(null); }}
-        style={{
-          ...smallBtnStyle,
-          background: open ? "rgba(139,92,246,0.12)" : "var(--color-background-secondary)",
-          borderColor: open ? "rgba(139,92,246,0.4)" : "var(--color-border-secondary)",
-          color: open ? "#A78BFA" : "var(--color-text-secondary)",
-          width: "100%", justifyContent: "center", padding: "8px 12px",
-        }}
-      >
-        <IconClapperboard size={15} /> Extend from movie short (AI scene generator)
-      </button>
-
-      {open && (
-        <div style={{
-          background: "var(--color-background-secondary)", borderRadius: 10,
-          padding: "14px", marginTop: 6,
-          border: "0.5px solid rgba(139,92,246,0.3)",
-        }}>
-          <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>
-            Upload a movie short — Claude Opus analyzes the characters, style, and story,
-            then writes a continuation storyboard using the same characters.
-            The original video becomes the first clip; generated scenes chain from its last frame.
-          </div>
-
-          {/* Video file picker */}
-          <div style={{ marginBottom: 10 }}>
-            <label style={labelStyle}>Movie short (MP4 / MOV / WebM · max 500 MB)</label>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="video/mp4,video/quicktime,video/webm,video/x-msvideo,.mp4,.mov,.webm,.avi"
-                style={{ display: "none" }}
-                onChange={e => { if (e.target.files[0]) setFile(e.target.files[0]); }}
-              />
-              <button onClick={() => fileRef.current.click()} style={smallBtnStyle}>
-                ↑ Choose video
-              </button>
-              {file && (
-                <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
-                  {file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Scene count + settings */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
-            <div>
-              <label style={labelStyle}>Scenes to generate</label>
-              <select value={nScenes} onChange={e => setNScenes(parseInt(e.target.value))} style={inputStyle}>
-                {[2, 3, 4, 5, 6, 8].map(n => <option key={n} value={n}>{n} scenes</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Resolution</label>
-              <select value={resolution} onChange={e => setResolution(e.target.value)} style={inputStyle}>
-                {["720p", "480p"].map(r => <option key={r}>{r}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Aspect ratio</label>
-              <select value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} style={inputStyle}>
-                {ASPECT_RATIOS.filter(r => r !== "auto").map(r => <option key={r}>{r}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Duration (sec)</label>
-              <select value={duration} onChange={e => setDuration(e.target.value)} style={inputStyle}>
-                {["4", "5", "6", "7", "8", "9", "10"].map(d => <option key={d}>{d}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 10, fontSize: 12, color: "#A78BFA", background: "rgba(139,92,246,0.08)", borderRadius: 6, padding: "7px 10px" }}>
-            Tip: After scenes are created, use <strong>Sequential render + Chain clips</strong> — each clip's last frame automatically becomes the next clip's start frame to keep characters consistent.
-          </div>
-
-          {error && (
-            <div style={{ background: "rgba(248,113,113,0.08)", border: "0.5px solid rgba(248,113,113,0.35)", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#F87171", marginBottom: 10 }}>
-              {error}
-            </div>
-          )}
-
-          {result && !error && (
-            <div style={{ background: "rgba(74,222,128,0.08)", border: "0.5px solid rgba(74,222,128,0.3)", borderRadius: 6, padding: "10px 12px", marginBottom: 10, fontSize: 12 }}>
-              <div style={{ fontWeight: 500, color: "#4ADE80", marginBottom: 6 }}>
-                ✓ Storyboard generated — {result.clips.length - 1} new scenes added
-              </div>
-              {result.story_so_far && (
-                <div style={{ color: "#86EFAC", marginBottom: 4 }}>
-                  <strong>Story so far:</strong> {result.story_so_far}
-                </div>
-              )}
-              {result.visual_style && (
-                <div style={{ color: "#86EFAC", marginBottom: 4 }}>
-                  <strong>Visual style:</strong> {result.visual_style}
-                </div>
-              )}
-              {result.character_anchors?.length > 0 && (
-                <div style={{ color: "#86EFAC" }}>
-                  <strong>Characters:</strong>{" "}
-                  {result.character_anchors.map(c => `${c.tag}: ${c.description}`).join(" · ")}
-                </div>
-              )}
-            </div>
-          )}
-
-          <button
-            onClick={analyze}
-            disabled={!file || loading}
-            style={{
-              ...smallBtnStyle,
-              background: loading ? "rgba(139,92,246,0.15)" : "#7C3AED",
-              borderColor: "#6D28D9",
-              color: "#fff",
-              padding: "8px 16px",
-              opacity: (!file || loading) ? 0.6 : 1,
-            }}
-          >
-            {loading ? <><Spinner /> Analyzing with Claude Opus…</> : <><IconSparkles size={14} /> Analyze & generate scenes</>}
-          </button>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+      <div style={{ background: "var(--color-background-primary)", borderRadius: 12, padding: "20px", width: "min(640px, 92vw)", maxHeight: "82vh", overflow: "auto", border: "0.5px solid var(--color-border-secondary)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>Edit all prompts</div>
+          <button onClick={onClose} style={smallBtnStyle}>✕ Close</button>
         </div>
-      )}
+        {prompts.length === 0 && (
+          <div style={{ fontSize: 13, color: "var(--color-text-tertiary)", padding: "20px 0" }}>No editable clips.</div>
+        )}
+        {prompts.map((p, i) => (
+          <div key={p.id} style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>{p.name}</label>
+            <textarea
+              value={p.prompt}
+              onChange={e => setPrompts(ps => ps.map((x, j) => j === i ? { ...x, prompt: e.target.value } : x))}
+              rows={2}
+              placeholder="Describe the motion, action, and mood…"
+              style={{ ...inputStyle, resize: "vertical", lineHeight: 1.5 }}
+            />
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+          <button onClick={onClose} style={smallBtnStyle}>Cancel</button>
+          <button onClick={save} style={{ ...smallBtnStyle, background: "rgba(96,165,250,0.10)", borderColor: "rgba(96,165,250,0.35)", color: "#60A5FA" }}>Save all</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -792,6 +706,14 @@ function ProjectView({ project, onBack }) {
   const [draftMode, setDraftMode] = useState(false);
   const [showCostEstimate, setShowCostEstimate] = useState(false);
   const [autoChain, setAutoChain] = useState(true);
+  // [IMPROVEMENT 4] Expand/collapse all (lifted state)
+  const [expandedIds, setExpandedIds] = useState(new Set());
+  const [viewMode, setViewMode] = useState("list");
+  const [showBatchPrompt, setShowBatchPrompt] = useState(false);
+  // [IMPROVEMENT 2] Drag-to-reorder
+  const [dragOverIdx, setDragOverIdx] = useState(null);
+  const dragSrcRef = useRef(null);
+
   const sseRef = useRef(null);
   const sseRetryDelayRef = useRef(1000);
   const sseRetryTimerRef = useRef(null);
@@ -802,109 +724,111 @@ function ProjectView({ project, onBack }) {
   const loadProject = useCallback(async () => {
     const r = await fetch(`${API}/projects/${proj.id}`);
     const data = await r.json();
-    setProj(data);
-    setClips(data.clips || []);
+    setProj(data); setClips(data.clips || []);
   }, [proj.id]);
 
-  // SSE connection for real-time updates during rendering
   const connectSSE = useCallback(() => {
     if (sseRef.current) sseRef.current.close();
     if (sseRetryTimerRef.current) clearTimeout(sseRetryTimerRef.current);
-
     const es = new EventSource(`${API}/projects/${proj.id}/render/stream`);
     sseRef.current = es;
-
     const onTerminal = async () => {
-      renderingRef.current = false;
-      es.close();
-      sseRef.current = null;
-      await loadProject();
-      setRendering(false);
+      renderingRef.current = false; es.close(); sseRef.current = null;
+      await loadProject(); setRendering(false);
     };
-
     es.onmessage = async (e) => {
       sseRetryDelayRef.current = 1000;
       const event = JSON.parse(e.data);
-      if (event.type === "clip_complete") {
-        log(`✓ Clip ${event.clip_id} complete`);
-        await loadProject();
-      } else if (event.type === "clip_error") {
-        log(`✗ Clip ${event.clip_id} error: ${event.message}`);
-        await loadProject();
-      } else if (event.type === "clip_start") {
-        log(`⟳ Clip ${event.clip_id} generating (attempt ${event.attempt})...`);
-        await loadProject();
-      } else if (event.type === "clip_queued") {
-        log(`↑ Clip ${event.clip_id} queued`);
-        await loadProject();
-      } else if (event.type === "chain_complete") {
-        log(`⛓ Clip ${event.from_clip} → ${event.to_clip} chained`);
-      } else if (event.type === "stitch_start") {
-        log("Stitching clips...");
-      } else if (event.type === "stitch_complete") {
-        log("Stitch complete — final video ready");
-        await onTerminal();
-      } else if (event.type === "done") {
-        if (event.error) log(`Error: ${event.error}`);
-        await onTerminal();
-      }
+      if (event.type === "clip_complete") { log(`✓ Clip ${event.clip_id} complete`); await loadProject(); }
+      else if (event.type === "clip_error") { log(`✗ Clip ${event.clip_id} error: ${event.message}`); await loadProject(); }
+      else if (event.type === "clip_start") { log(`⟳ Clip ${event.clip_id} generating (attempt ${event.attempt})...`); await loadProject(); }
+      else if (event.type === "clip_queued") { log(`↑ Clip ${event.clip_id} queued`); await loadProject(); }
+      else if (event.type === "chain_complete") { log(`⛓ Clip ${event.from_clip} → ${event.to_clip} chained`); }
+      else if (event.type === "stitch_start") { log("Stitching clips..."); }
+      else if (event.type === "stitch_complete") { log("Stitch complete — final video ready"); await onTerminal(); }
+      else if (event.type === "done") { if (event.error) log(`Error: ${event.error}`); await onTerminal(); }
     };
-
     es.onerror = () => {
-      es.close();
-      sseRef.current = null;
+      es.close(); sseRef.current = null;
       if (renderingRef.current) {
-        // Reconnect with exponential backoff (max 30s)
         sseRetryTimerRef.current = setTimeout(() => {
           sseRetryDelayRef.current = Math.min(sseRetryDelayRef.current * 2, 30000);
           connectSSE();
         }, sseRetryDelayRef.current);
-      } else {
-        setRendering(false);
-      }
+      } else { setRendering(false); }
     };
   }, [proj.id, loadProject]);
 
   useEffect(() => {
     loadProject();
-    return () => {
-      sseRef.current?.close();
-      if (sseRetryTimerRef.current) clearTimeout(sseRetryTimerRef.current);
-    };
+    return () => { sseRef.current?.close(); if (sseRetryTimerRef.current) clearTimeout(sseRetryTimerRef.current); };
   }, []);
+
+  // [IMPROVEMENT 4] Expand/collapse all
+  const toggleExpanded = (id) => setExpandedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const expandAll = () => setExpandedIds(new Set(clips.map(c => c.id)));
+  const collapseAll = () => setExpandedIds(new Set());
+
+  // [IMPROVEMENT 2] Drag-to-reorder
+  const handleDrop = async (targetIdx) => {
+    const srcIdx = dragSrcRef.current;
+    setDragOverIdx(null); dragSrcRef.current = null;
+    if (srcIdx === null || srcIdx === targetIdx) return;
+    const newClips = [...clips];
+    const [moved] = newClips.splice(srcIdx, 1);
+    newClips.splice(targetIdx, 0, moved);
+    setClips(newClips);
+    const r = await fetch(`${API}/projects/${proj.id}/clips/reorder`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newClips.map(c => c.id)),
+    });
+    setClips(await r.json());
+  };
 
   const addClip = async () => {
     setAddingClip(true);
     const r = await fetch(`${API}/projects/${proj.id}/clips`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: "", image_url: "https://example.com/placeholder.jpg",
-        name: `Scene ${clips.length + 1}`, order: clips.length,
-      }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "", image_url: "https://example.com/placeholder.jpg", name: `Scene ${clips.length + 1}`, order: clips.length }),
     });
     const clip = await r.json();
-    setClips(c => [...c, clip]);
-    log(`Added: Scene ${clips.length + 1}`);
-    setAddingClip(false);
+    setClips(c => [...c, clip]); log(`Added: Scene ${clips.length + 1}`); setAddingClip(false);
+  };
+
+  // [IMPROVEMENT 5] Duplicate clip
+  const duplicateClip = async (clip) => {
+    const r = await fetch(`${API}/projects/${proj.id}/clips`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `${clip.name || `Clip`} (copy)`, prompt: clip.prompt,
+        image_url: clip.image_url || "", end_image_url: clip.end_image_url,
+        model: clip.model, reference_image_urls: clip.reference_image_urls,
+        reference_video_urls: clip.reference_video_urls, reference_audio_urls: clip.reference_audio_urls,
+        resolution: clip.resolution, duration: clip.duration,
+        aspect_ratio: clip.aspect_ratio, generate_audio: clip.generate_audio,
+        transition_type: clip.transition_type, order: clips.length,
+      }),
+    });
+    const newClip = await r.json();
+    setClips(c => [...c, newClip]); log(`Duplicated → ${newClip.name}`);
   };
 
   const updateClip = async (clipId, updates) => {
     const r = await fetch(`${API}/projects/${proj.id}/clips/${clipId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updates),
     });
     const updated = await r.json();
-    setClips(c => c.map(x => x.id === clipId ? updated : x));
-    log(`Saved clip ${clipId}`);
+    setClips(c => c.map(x => x.id === clipId ? updated : x)); log(`Saved clip ${clipId}`);
   };
 
   const deleteClip = async (clipId) => {
     if (!confirm("Delete this clip?")) return;
     await fetch(`${API}/projects/${proj.id}/clips/${clipId}`, { method: "DELETE" });
-    setClips(c => c.filter(x => x.id !== clipId));
-    log(`Deleted clip ${clipId}`);
+    setClips(c => c.filter(x => x.id !== clipId)); log(`Deleted clip ${clipId}`);
   };
 
   const moveClip = async (index, direction) => {
@@ -912,11 +836,8 @@ function ProjectView({ project, onBack }) {
     const target = index + direction;
     if (target < 0 || target >= newClips.length) return;
     [newClips[index], newClips[target]] = [newClips[target], newClips[index]];
-    const ids = newClips.map(c => c.id);
     const r = await fetch(`${API}/projects/${proj.id}/clips/reorder`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(ids),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newClips.map(c => c.id)),
     });
     setClips(await r.json());
   };
@@ -924,15 +845,13 @@ function ProjectView({ project, onBack }) {
   const generateClip = async (clipId) => {
     const r = await fetch(`${API}/projects/${proj.id}/clips/${clipId}/generate`, { method: "POST" });
     const updated = await r.json();
-    setClips(c => c.map(x => x.id === clipId ? updated : x));
-    log(`Submitted clip ${clipId}`);
+    setClips(c => c.map(x => x.id === clipId ? updated : x)); log(`Submitted clip ${clipId}`);
   };
 
   const pollClip = async (clipId) => {
     const r = await fetch(`${API}/projects/${proj.id}/clips/${clipId}/poll`);
     const updated = await r.json();
-    setClips(c => c.map(x => x.id === clipId ? updated : x));
-    log(`Polled clip ${clipId}: ${updated.status}`);
+    setClips(c => c.map(x => x.id === clipId ? updated : x)); log(`Polled clip ${clipId}: ${updated.status}`);
   };
 
   const useAsNext = async (clipId) => {
@@ -943,40 +862,49 @@ function ProjectView({ project, onBack }) {
     log(`Extracted last frame of clip ${clipId} → next clip start`);
   };
 
-  const startRender = async (parallel = false) => {
-    sseRetryDelayRef.current = 1000;
-    renderingRef.current = true;
-    setRendering(true);
-    connectSSE();
-    const r = await fetch(`${API}/projects/${proj.id}/render`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        parallel, stitch: true, draft: draftMode,
-        crossfade: true, crossfade_duration: crossfadeDuration,
-        auto_chain: !parallel && autoChain,
-      }),
+  // [IMPROVEMENT 10] Retry all errored clips
+  const retryErrors = async () => {
+    const errorClips = clips.filter(c => c.status === "error" && !c.is_passthrough);
+    for (const c of errorClips) await generateClip(c.id);
+    log(`Retried ${errorClips.length} failed clip(s)`);
+  };
+
+  const generateMissing = async () => {
+    const missing = clips.filter(c => {
+      if (c.is_passthrough || c.status === "complete" || c.status === "queued" || c.status === "generating") return false;
+      const mt = MODEL_TYPE(c.model || "fast-i2v");
+      if (!c.prompt) return false;
+      if (mt === "i2v") return c.image_url && c.image_url !== "https://example.com/placeholder.jpg";
+      if (mt === "ref") return c.reference_image_urls?.length > 0 || c.reference_video_urls?.length > 0;
+      return true;
     });
-    const data = await r.json();
-    log(`Render started: ${data.message}`);
-    await loadProject();
+    for (const c of missing) await generateClip(c.id);
+    log(`Submitted ${missing.length} clip(s) for generation`);
+  };
+
+  const startRender = async (parallel = false) => {
+    sseRetryDelayRef.current = 1000; renderingRef.current = true; setRendering(true); connectSSE();
+    const r = await fetch(`${API}/projects/${proj.id}/render`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ parallel, stitch: true, draft: draftMode, crossfade: true, crossfade_duration: crossfadeDuration, auto_chain: !parallel && autoChain }),
+    });
+    const data = await r.json(); log(`Render started: ${data.message}`); await loadProject();
   };
 
   const stitch = async () => {
     await fetch(`${API}/projects/${proj.id}/render/stitch?crossfade=true&crossfade_duration=${crossfadeDuration}`, { method: "POST" });
-    log("Stitching triggered...");
-    await loadProject();
+    log("Stitching triggered..."); await loadProject();
   };
 
   const completeClips = clips.filter(c => c.status === "complete");
+  const errorClips = clips.filter(c => c.status === "error" && !c.is_passthrough);
   const allComplete = clips.length > 0 && clips.every(c => c.status === "complete");
   const validClips = clips.filter(c => {
-    if (c.is_passthrough) return false;
-    if (!c.prompt) return false;
+    if (c.is_passthrough || !c.prompt) return false;
     const mt = MODEL_TYPE(c.model || "fast-i2v");
     if (mt === "i2v") return c.image_url && c.image_url !== "https://example.com/placeholder.jpg";
-    if (mt === "ref") return (c.reference_image_urls?.length > 0 || c.reference_video_urls?.length > 0);
-    return true; // t2v: just needs prompt
+    if (mt === "ref") return c.reference_image_urls?.length > 0 || c.reference_video_urls?.length > 0;
+    return true;
   });
 
   return (
@@ -994,17 +922,8 @@ function ProjectView({ project, onBack }) {
         {proj.status === "rendering" && <Spinner />}
       </div>
 
-      {/* Extend from video panel */}
-      <ExtendPanel
-        project={proj}
-        onClipsAdded={newClips => setClips(c => [...c, ...newClips])}
-        onLog={log}
-      />
-
-      {/* Filmstrip */}
       <FilmStrip clips={clips} />
 
-      {/* Final video */}
       {proj.final_video_url && (
         <div style={{ background: "rgba(74,222,128,0.07)", border: "0.5px solid rgba(74,222,128,0.3)", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ color: "#4ADE80", flexShrink: 0, display: "flex" }}><IconClapperboard size={20} /></span>
@@ -1022,103 +941,113 @@ function ProjectView({ project, onBack }) {
       <div style={{ background: "var(--color-background-secondary)", borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
           <span style={{ fontSize: 13, color: "var(--color-text-secondary)", marginRight: 4 }}>Render:</span>
-
-          <button
-            onClick={() => startRender(false)}
-            disabled={rendering || clips.length === 0 || proj.status === "rendering"}
-            style={{ ...smallBtnStyle, background: "rgba(96,165,250,0.10)", borderColor: "rgba(96,165,250,0.35)", color: "#60A5FA" }}
-          >▶ Sequential</button>
-
-          <button
-            onClick={() => startRender(true)}
-            disabled={rendering || clips.length === 0 || proj.status === "rendering"}
-            style={smallBtnStyle}
-          ><IconZap /> Parallel</button>
-
+          <button onClick={() => startRender(false)} disabled={rendering || clips.length === 0 || proj.status === "rendering"}
+            style={{ ...smallBtnStyle, background: "rgba(96,165,250,0.10)", borderColor: "rgba(96,165,250,0.35)", color: "#60A5FA" }}>▶ Sequential</button>
+          <button onClick={() => startRender(true)} disabled={rendering || clips.length === 0 || proj.status === "rendering"}
+            style={smallBtnStyle}><IconZap /> Parallel</button>
           {completeClips.length > 0 && !allComplete && (
             <button onClick={stitch} style={{ ...smallBtnStyle, background: "rgba(251,191,36,0.10)", borderColor: "rgba(251,191,36,0.35)", color: "#FBBF24" }}>
               <IconScissors /> Stitch ready clips
             </button>
           )}
-
+          {validClips.some(c => c.status !== "complete" && c.status !== "queued" && c.status !== "generating") && (
+            <button onClick={generateMissing} disabled={rendering || proj.status === "rendering"}
+              style={{ ...smallBtnStyle, background: "rgba(251,191,36,0.10)", borderColor: "rgba(251,191,36,0.35)", color: "#FBBF24" }}>
+              <IconSparkles size={13} /> Generate missing
+            </button>
+          )}
+          {/* [IMPROVEMENT 10] Retry all errors */}
+          {errorClips.length > 0 && (
+            <button onClick={retryErrors}
+              style={{ ...smallBtnStyle, background: "rgba(248,113,113,0.10)", borderColor: "rgba(248,113,113,0.35)", color: "#F87171" }}>
+              ↻ Retry errors ({errorClips.length})
+            </button>
+          )}
           <span style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginLeft: "auto" }}>
             {completeClips.length}/{clips.length} clips ready
           </span>
         </div>
 
-        {/* Render options row */}
+        {/* [IMPROVEMENT 3] Render progress bar */}
+        {clips.length > 0 && (
+          <div style={{ height: 3, background: "var(--color-background-primary)", borderRadius: 2, overflow: "hidden", marginBottom: 10 }}>
+            <div style={{ height: "100%", width: `${clips.length > 0 ? (completeClips.length / clips.length * 100) : 0}%`, background: "#4ADE80", transition: "width 0.5s ease", borderRadius: 2 }} />
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--color-text-secondary)", cursor: "pointer" }}>
             <input type="checkbox" checked={draftMode} onChange={e => setDraftMode(e.target.checked)} />
             <span style={{ color: draftMode ? "#4ADE80" : "inherit" }}>Draft mode (480p, ~30% cheaper)</span>
           </label>
-
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--color-text-secondary)", cursor: "pointer" }} title="Sequential only: extract last frame of each clip and use it as the start of the next clip to maintain character continuity">
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--color-text-secondary)", cursor: "pointer" }}>
             <input type="checkbox" checked={autoChain} onChange={e => setAutoChain(e.target.checked)} />
-            <span style={{ color: autoChain ? "#A78BFA" : "inherit" }}>Chain clips (keep characters consistent)</span>
+            <span style={{ color: autoChain ? "#A78BFA" : "inherit" }}>Chain clips</span>
           </label>
-
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--color-text-secondary)" }}>
             Crossfade:
-            <select
-              value={crossfadeDuration}
-              onChange={e => setCrossfadeDuration(parseFloat(e.target.value))}
-              style={{ ...inputStyle, padding: "3px 6px", width: "auto", fontSize: 12 }}
-            >
-              <option value={0}>None (hard cut)</option>
-              <option value={0.3}>0.3s (quick)</option>
-              <option value={0.5}>0.5s (default)</option>
-              <option value={1.0}>1.0s (smooth)</option>
-              <option value={1.5}>1.5s (dreamy)</option>
+            <select value={crossfadeDuration} onChange={e => setCrossfadeDuration(parseFloat(e.target.value))}
+              style={{ ...inputStyle, padding: "3px 6px", width: "auto", fontSize: 12 }}>
+              <option value={0}>None (cut)</option>
+              <option value={0.3}>0.3s</option>
+              <option value={0.5}>0.5s</option>
+              <option value={1.0}>1.0s</option>
+              <option value={1.5}>1.5s</option>
             </select>
           </label>
-
-          <button
-            onClick={() => setShowCostEstimate(s => !s)}
-            style={{ ...smallBtnStyle, fontSize: 11 }}
-          ><IconCoin size={13} /> {showCostEstimate ? "Hide" : "Estimate cost"}</button>
+          <button onClick={() => setShowCostEstimate(s => !s)} style={{ ...smallBtnStyle, fontSize: 11 }}>
+            <IconCoin size={13} /> {showCostEstimate ? "Hide" : "Estimate cost"}
+          </button>
         </div>
-
         {showCostEstimate && validClips.length > 0 && (
-          <div style={{ marginTop: 10 }}>
-            <CostEstimate clips={validClips} draft={draftMode} />
-          </div>
+          <div style={{ marginTop: 10 }}><CostEstimate clips={validClips} draft={draftMode} /></div>
         )}
       </div>
 
-      {/* Clip list */}
+      {/* Toolbar: view toggle, batch prompts, expand/collapse */}
+      {clips.length > 1 && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 8, justifyContent: "flex-end" }}>
+          <button onClick={() => setShowBatchPrompt(true)} style={{ ...smallBtnStyle, fontSize: 11 }}>✏ Prompts</button>
+          <button onClick={() => setViewMode(v => v === "list" ? "grid" : "list")} style={{ ...smallBtnStyle, fontSize: 11 }}>
+            {viewMode === "grid" ? "≡ List" : "⊞ Grid"}
+          </button>
+          <button onClick={expandAll} style={{ ...smallBtnStyle, fontSize: 11 }}>Expand all</button>
+          <button onClick={collapseAll} style={{ ...smallBtnStyle, fontSize: 11 }}>Collapse all</button>
+        </div>
+      )}
+
       {clips.length === 0 ? (
         <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--color-text-tertiary)", fontSize: 14 }}>
           No clips yet. Add your first scene below.
         </div>
       ) : (
-        clips.map((clip, i) => (
-          <ClipCard
-            key={clip.id}
-            clip={clip}
-            index={i}
-            total={clips.length}
-            onUpdate={updateClip}
-            onDelete={deleteClip}
-            onMoveUp={() => moveClip(i, -1)}
-            onMoveDown={() => moveClip(i, 1)}
-            onGenerate={generateClip}
-            onPoll={pollClip}
-            onUseAsNext={useAsNext}
-            projectStatus={proj.status}
-          />
-        ))
+        <div style={viewMode === "grid" ? { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 } : {}}>
+          {clips.map((clip, i) => (
+            <ClipCard
+              key={clip.id}
+              clip={clip} index={i} total={clips.length}
+              onUpdate={updateClip} onDelete={deleteClip}
+              onMoveUp={() => moveClip(i, -1)} onMoveDown={() => moveClip(i, 1)}
+              onGenerate={generateClip} onPoll={pollClip}
+              onUseAsNext={useAsNext} onDuplicate={duplicateClip}
+              projectStatus={proj.status}
+              expanded={expandedIds.has(clip.id)}
+              onToggle={() => toggleExpanded(clip.id)}
+              isDragOver={dragOverIdx === i}
+              onDragStart={idx => { dragSrcRef.current = idx; }}
+              onDragOver={idx => setDragOverIdx(idx)}
+              onDrop={handleDrop}
+              onDragEnd={() => { setDragOverIdx(null); dragSrcRef.current = null; }}
+            />
+          ))}
+        </div>
       )}
 
-      <button
-        onClick={addClip}
-        disabled={addingClip}
-        style={{ width: "100%", padding: "10px", borderRadius: 10, border: "1px dashed var(--color-border-secondary)", background: "transparent", cursor: "pointer", fontSize: 14, color: "var(--color-text-secondary)", marginTop: 4 }}
-      >
+      <button onClick={addClip} disabled={addingClip}
+        style={{ width: "100%", padding: "10px", borderRadius: 10, border: "1px dashed var(--color-border-secondary)", background: "transparent", cursor: "pointer", fontSize: 14, color: "var(--color-text-secondary)", marginTop: 4 }}>
         {addingClip ? "Adding…" : "+ Add scene"}
       </button>
 
-      {/* Activity log */}
       {logs.length > 0 && (
         <div style={{ marginTop: 20, background: "var(--color-background-secondary)", borderRadius: 10, padding: "10px 12px" }}>
           <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.07em" }}>Activity log</div>
@@ -1126,6 +1055,17 @@ function ProjectView({ project, onBack }) {
             <div key={i} style={{ fontSize: 12, color: "var(--color-text-secondary)", fontFamily: "var(--font-mono)", padding: "2px 0" }}>{l}</div>
           ))}
         </div>
+      )}
+
+      {showBatchPrompt && (
+        <BatchPromptModal
+          clips={clips}
+          onSave={async (changed) => {
+            for (const { id, prompt } of changed) await updateClip(id, { prompt });
+            log(`Updated ${changed.length} prompt(s)`);
+          }}
+          onClose={() => setShowBatchPrompt(false)}
+        />
       )}
     </div>
   );
@@ -1141,8 +1081,7 @@ function ProjectList({ onSelect }) {
   const [error, setError] = useState(null);
 
   const load = async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       const r = await fetch(`${API}/projects`);
       if (!r.ok) throw new Error(`API error: ${r.status}`);
@@ -1158,14 +1097,12 @@ function ProjectList({ onSelect }) {
   const createProject = async () => {
     if (!newName.trim()) return;
     const r = await fetch(`${API}/projects`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newName, description: newDesc }),
     });
     const p = await r.json();
     setProjects(ps => [{ ...p, clip_count: 0 }, ...ps]);
-    setNewName(""); setNewDesc(""); setCreating(false);
-    onSelect(p);
+    setNewName(""); setNewDesc(""); setCreating(false); onSelect(p);
   };
 
   const deleteProject = async (id, e) => {
@@ -1178,7 +1115,6 @@ function ProjectList({ onSelect }) {
   return (
     <div style={{ maxWidth: 700, margin: "0 auto", padding: "0 0 40px" }}>
       <style>{spinKeyframes}</style>
-
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 24, fontWeight: 600, color: "var(--color-text-primary)", letterSpacing: "-0.5px" }}>
@@ -1191,9 +1127,7 @@ function ProjectList({ onSelect }) {
           background: creating ? "rgba(248,113,113,0.10)" : "rgba(74,222,128,0.10)",
           borderColor: creating ? "rgba(248,113,113,0.4)" : "rgba(74,222,128,0.4)",
           color: creating ? "#F87171" : "#4ADE80",
-        }}>
-          {creating ? "✕ Cancel" : "+ New project"}
-        </button>
+        }}>{creating ? "✕ Cancel" : "+ New project"}</button>
       </div>
 
       {creating && (
@@ -1201,8 +1135,7 @@ function ProjectList({ onSelect }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10, marginBottom: 10 }}>
             <div>
               <label style={labelStyle}>Project name</label>
-              <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="My feature film..." style={inputStyle} autoFocus
-                onKeyDown={e => e.key === "Enter" && createProject()} />
+              <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="My feature film..." style={inputStyle} autoFocus onKeyDown={e => e.key === "Enter" && createProject()} />
             </div>
             <div>
               <label style={labelStyle}>Description</label>
@@ -1214,31 +1147,19 @@ function ProjectList({ onSelect }) {
       )}
 
       {error && (
-        <div style={{ background: "rgba(248,113,113,0.08)", border: "0.5px solid rgba(248,113,113,0.35)", borderRadius: 10, padding: "12px 14px", marginBottom: 16, fontSize: 13, color: "#F87171", fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap" }}>
-          {error}
-        </div>
+        <div style={{ background: "rgba(248,113,113,0.08)", border: "0.5px solid rgba(248,113,113,0.35)", borderRadius: 10, padding: "12px 14px", marginBottom: 16, fontSize: 13, color: "#F87171", fontFamily: "var(--font-mono)", whiteSpace: "pre-wrap" }}>{error}</div>
       )}
 
       {loading ? (
         <div style={{ textAlign: "center", padding: 40 }}><Spinner /></div>
       ) : projects.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "50px 20px", color: "var(--color-text-tertiary)", fontSize: 14 }}>
-          No projects yet. Create your first cinematic project above.
-        </div>
+        <div style={{ textAlign: "center", padding: "50px 20px", color: "var(--color-text-tertiary)", fontSize: 14 }}>No projects yet. Create your first cinematic project above.</div>
       ) : (
         projects.map(p => (
-          <div key={p.id}
-            onClick={() => onSelect(p)}
-            style={{
-              background: "var(--color-background-primary)",
-              border: "0.5px solid var(--color-border-tertiary)",
-              borderRadius: 12, padding: "12px 16px", marginBottom: 8,
-              cursor: "pointer", display: "flex", alignItems: "center", gap: 12,
-              transition: "border-color 0.15s",
-            }}
+          <div key={p.id} onClick={() => onSelect(p)}
+            style={{ background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, padding: "12px 16px", marginBottom: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, transition: "border-color 0.15s" }}
             onMouseEnter={e => e.currentTarget.style.borderColor = "var(--color-border-secondary)"}
-            onMouseLeave={e => e.currentTarget.style.borderColor = "var(--color-border-tertiary)"}
-          >
+            onMouseLeave={e => e.currentTarget.style.borderColor = "var(--color-border-tertiary)"}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 500, fontSize: 14, color: "var(--color-text-primary)" }}>{p.name}</div>
               {p.description && <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 2 }}>{p.description}</div>}
@@ -1248,10 +1169,8 @@ function ProjectList({ onSelect }) {
             </div>
             <Badge status={p.status} />
             {p.final_video_url && <span style={{ fontSize: 11, color: "#4ADE80" }}>✓ video</span>}
-            <button
-              onClick={(e) => deleteProject(p.id, e)}
-              style={{ ...smallBtnStyle, color: "#F87171", borderColor: "rgba(248,113,113,0.4)", fontSize: 11, padding: "3px 8px" }}
-            >✕</button>
+            <button onClick={(e) => deleteProject(p.id, e)}
+              style={{ ...smallBtnStyle, color: "#F87171", borderColor: "rgba(248,113,113,0.4)", fontSize: 11, padding: "3px 8px" }}>✕</button>
           </div>
         ))
       )}
@@ -1265,14 +1184,12 @@ const labelStyle = {
   color: "var(--color-text-secondary)", textTransform: "uppercase",
   letterSpacing: "0.06em", marginBottom: 5,
 };
-
 const inputStyle = {
   width: "100%", boxSizing: "border-box", padding: "7px 10px",
   fontSize: 13, borderRadius: 7, border: "0.5px solid var(--color-border-secondary)",
   background: "var(--color-background-primary)", color: "var(--color-text-primary)",
   fontFamily: "var(--font-sans)",
 };
-
 const smallBtnStyle = {
   padding: "5px 12px", fontSize: 12, fontWeight: 500, borderRadius: 7,
   border: "0.5px solid var(--color-border-secondary)",

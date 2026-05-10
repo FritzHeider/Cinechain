@@ -208,9 +208,13 @@ async def generate_clip(project_id: int, clip_id: int, db: AsyncSession = Depend
         raise HTTPException(status_code=400, detail="Cannot regenerate a passthrough clip (original uploaded video).")
 
     request_id = await fal_service.submit_clip(
+        model_key=clip.model or "fast-i2v",
         prompt=clip.prompt,
         image_url=clip.image_url,
         end_image_url=clip.end_image_url,
+        reference_image_urls=clip.reference_image_urls,
+        reference_video_urls=clip.reference_video_urls,
+        reference_audio_urls=clip.reference_audio_urls,
         resolution=clip.resolution,
         duration=clip.duration,
         aspect_ratio=clip.aspect_ratio,
@@ -235,7 +239,7 @@ async def poll_clip(project_id: int, clip_id: int, db: AsyncSession = Depends(ge
     if clip.status == "complete":
         return clip
 
-    result = await fal_service.poll_clip(clip.fal_request_id)
+    result = await fal_service.poll_clip(clip.fal_request_id, clip.model or "fast-i2v")
     if result:
         clip.status = "complete"
         clip.video_url = result.video_url
@@ -343,9 +347,13 @@ async def _run_clip_with_retry(clip_id: int, draft: bool, max_retries: int, proj
                 resolution = "480p" if draft else clip.resolution
                 _emit(project_id, {"type": "clip_start", "clip_id": clip_id, "attempt": attempt})
                 job_result = await fal_service.run_clip_sync(
+                    model_key=clip.model or "fast-i2v",
                     prompt=clip.prompt,
                     image_url=clip.image_url,
                     end_image_url=clip.end_image_url,
+                    reference_image_urls=clip.reference_image_urls,
+                    reference_video_urls=clip.reference_video_urls,
+                    reference_audio_urls=clip.reference_audio_urls,
                     resolution=resolution,
                     duration=clip.duration,
                     aspect_ratio=clip.aspect_ratio,
@@ -466,9 +474,13 @@ async def _render_parallel(
             try:
                 resolution = "480p" if draft else clip.resolution
                 request_id = await fal_service.submit_clip(
+                    model_key=clip.model or "fast-i2v",
                     prompt=clip.prompt,
                     image_url=clip.image_url,
                     end_image_url=clip.end_image_url,
+                    reference_image_urls=clip.reference_image_urls,
+                    reference_video_urls=clip.reference_video_urls,
+                    reference_audio_urls=clip.reference_audio_urls,
                     resolution=resolution,
                     duration=clip.duration,
                     aspect_ratio=clip.aspect_ratio,
@@ -500,7 +512,7 @@ async def _render_parallel(
                     done.add(clip_id)
                     continue
                 try:
-                    job_result = await fal_service.poll_clip(clip.fal_request_id)
+                    job_result = await fal_service.poll_clip(clip.fal_request_id, clip.model or "fast-i2v")
                     if job_result:
                         clip.status = "complete"
                         clip.video_url = job_result.video_url

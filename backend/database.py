@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, Float, Boolean, Text, ForeignKey, DateTime, text
+from sqlalchemy import String, Integer, Float, Boolean, Text, ForeignKey, DateTime, JSON, text
 from datetime import datetime, timezone
 from config import settings
 
@@ -49,6 +49,10 @@ class Clip(Base):
     generate_audio: Mapped[bool] = mapped_column(Boolean, default=True)
     seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    model: Mapped[str] = mapped_column(String(20), default="fast-i2v")
+    reference_image_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    reference_video_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    reference_audio_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     transition_type: Mapped[str] = mapped_column(String(50), default="fade")  # fade | wipeleft | wiperight | dissolve | circleopen | slidedown | etc.
     is_passthrough: Mapped[bool] = mapped_column(Boolean, default=False)  # clip already has a video; skip generation
 
@@ -77,6 +81,10 @@ async def init_db():
         # Idempotent migrations for columns added after initial schema
         _migrations = [
             "ALTER TABLE clips ADD COLUMN is_passthrough BOOLEAN NOT NULL DEFAULT 0",
+            "ALTER TABLE clips ADD COLUMN model VARCHAR(20) NOT NULL DEFAULT 'fast-i2v'",
+            "ALTER TABLE clips ADD COLUMN reference_image_urls TEXT",
+            "ALTER TABLE clips ADD COLUMN reference_video_urls TEXT",
+            "ALTER TABLE clips ADD COLUMN reference_audio_urls TEXT",
         ]
         for sql in _migrations:
             try:

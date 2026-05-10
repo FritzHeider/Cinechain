@@ -40,12 +40,22 @@ def _validate_public_url(v: str | None) -> str | None:
     return v
 
 
+def _validate_url_list(urls: list[str] | None) -> list[str] | None:
+    if not urls:
+        return urls
+    return [_validate_public_url(u) for u in urls]
+
+
 class ClipCreate(BaseModel):
     name: str = ""
     prompt: str = ""
-    image_url: str
+    image_url: str = ""
     end_image_url: Optional[str] = None
-    resolution: Literal["480p", "720p"] = "720p"
+    model: str = "fast-i2v"
+    reference_image_urls: Optional[list[str]] = None
+    reference_video_urls: Optional[list[str]] = None
+    reference_audio_urls: Optional[list[str]] = None
+    resolution: Literal["480p", "720p", "1080p"] = "720p"
     duration: Literal["auto", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"] = "auto"
     aspect_ratio: Literal["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"] = "auto"
     generate_audio: bool = True
@@ -59,13 +69,22 @@ class ClipCreate(BaseModel):
     def validate_image_urls(cls, v):
         return _validate_public_url(v)
 
+    @field_validator("reference_image_urls", "reference_video_urls", "reference_audio_urls", mode="before")
+    @classmethod
+    def validate_reference_urls(cls, v):
+        return _validate_url_list(v)
+
 
 class ClipUpdate(BaseModel):
     name: Optional[str] = None
     prompt: Optional[str] = None
     image_url: Optional[str] = None
     end_image_url: Optional[str] = None
-    resolution: Optional[Literal["480p", "720p"]] = None
+    model: Optional[str] = None
+    reference_image_urls: Optional[list[str]] = None
+    reference_video_urls: Optional[list[str]] = None
+    reference_audio_urls: Optional[list[str]] = None
+    resolution: Optional[Literal["480p", "720p", "1080p"]] = None
     duration: Optional[Literal["auto", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]] = None
     aspect_ratio: Optional[Literal["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]] = None
     generate_audio: Optional[bool] = None
@@ -78,6 +97,11 @@ class ClipUpdate(BaseModel):
     def validate_image_urls(cls, v):
         return _validate_public_url(v)
 
+    @field_validator("reference_image_urls", "reference_video_urls", "reference_audio_urls", mode="before")
+    @classmethod
+    def validate_reference_urls(cls, v):
+        return _validate_url_list(v)
+
 
 class ClipResponse(BaseModel):
     id: int
@@ -87,6 +111,10 @@ class ClipResponse(BaseModel):
     prompt: str
     image_url: str
     end_image_url: Optional[str]
+    model: str
+    reference_image_urls: Optional[list]
+    reference_video_urls: Optional[list]
+    reference_audio_urls: Optional[list]
     resolution: str
     duration: str
     aspect_ratio: str
